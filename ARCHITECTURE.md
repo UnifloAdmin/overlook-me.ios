@@ -12,6 +12,39 @@ The app is organized into three distinct layers:
 - Side effects triggered by user actions or lifecycle events
 - Dependencies injected via `@Environment`
 
+#### UI Structure:
+- **Navigation/**: Global navigation components
+  - `MainContainerView`: **Native iOS 26 Liquid Glass tabs** (system `TabView`)
+  - `SideNavigationView`: Side menu (presented from the detached trailing tab button)
+- **Views/**: Feature-specific views
+- **Components/**: Reusable UI components
+
+#### Native Liquid Glass UI (iOS 26+) — how to use it (SwiftUI)
+- **Prefer system UI**: `TabView`, `Toolbar`, `NavigationStack` already render with Liquid Glass on iOS 26.
+- **Native tab bar + native “drag/slide” feel**:
+
+```swift
+TabView(selection: $tab) {
+  Tab("Home", systemImage: "house.fill", value: .home) { HomeView() }
+  Tab("Explore", systemImage: "safari.fill", value: .explore) { ExploreView() }
+  Tab(value: .searchProxy, role: .search) { Color.clear } // detached trailing pill/button
+}
+```
+
+- **Detached trailing pill/button (Apple News style)**: use `Tab(role: .search, value:)`.
+- **If the trailing button should open a sheet**: `onChange(of: tab)` → present, then restore previous tab.
+- **Apply Liquid Glass to custom surfaces (only when needed)**:
+
+```swift
+if #available(iOS 26.0, *) {
+  GlassEffectContainer {
+    YourView().glassEffect(in: .capsule) // or .rect(cornerRadius:)
+  }
+}
+```
+
+- **Avoid**: building a fully custom tab bar if you want **native** Liquid Glass + native gestures.
+
 ### 2. **Business Logic Layer** (`Interactors/`)
 - **Interactors** handle all business logic
 - Receive requests from views
