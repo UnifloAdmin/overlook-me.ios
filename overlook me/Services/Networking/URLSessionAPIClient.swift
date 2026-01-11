@@ -65,6 +65,13 @@ struct URLSessionAPIClient: APIClient {
         do {
             return try jsonDecoder.decode(T.self, from: decodedData)
         } catch {
+            if let unwrapped = ResponseEnvelopeUnwrapper.unwrap(decodedData) {
+                do {
+                    return try jsonDecoder.decode(T.self, from: unwrapped)
+                } catch {
+                    throw APIError.decodingFailed(error)
+                }
+            }
             throw APIError.decodingFailed(error)
         }
     }

@@ -18,50 +18,35 @@ struct MainContainerView: View {
     var body: some View {
         TabView(selection: $selection) {
             Tab(tabBar.config.home.title, systemImage: tabBar.config.home.systemImage, value: .home) {
-                NavigationStack(path: $homePath) {
-                    HomeView()
-                        .tabBarConfig(.default)
-                        .navigationDestination(for: SideNavRoute.self) { route in
-                            destination(for: route)
-                        }
-                }
-                .environmentObject(tabBar)
+                homeTabContent()
+                    .environmentObject(tabBar)
             }
             
             Tab(tabBar.config.explore.title, systemImage: tabBar.config.explore.systemImage, value: .explore) {
-                NavigationStack {
-                    PlaceholderView(
-                        title: "Explore",
-                        icon: "safari.fill",
-                        description: "Discover new content and explore features"
-                    )
-                    .tabBarConfig(.default)
-                }
-                .environmentObject(tabBar)
+                exploreTabContent()
+                    .environmentObject(tabBar)
             }
             
             Tab(tabBar.config.alerts.title, systemImage: tabBar.config.alerts.systemImage, value: .notifications) {
-                NavigationStack {
-                    PlaceholderView(
-                        title: "Notifications",
-                        icon: "bell.fill",
-                        description: "Stay updated with your latest alerts"
-                    )
-                    .tabBarConfig(.default)
-                }
-                .environmentObject(tabBar)
+                alertsTabContent()
+                    .environmentObject(tabBar)
             }
             
-            Tab(tabBar.config.messages.title, systemImage: tabBar.config.messages.systemImage, value: .messages) {
-                NavigationStack {
-                    PlaceholderView(
-                        title: "Messages",
-                        icon: "envelope.fill",
-                        description: "View and manage your messages"
-                    )
-                    .tabBarConfig(.default)
+            if let messages = tabBar.config.messages {
+                Tab(messages.title, systemImage: messages.systemImage, value: .messages) {
+                    messagesTabContent()
+                        .environmentObject(tabBar)
                 }
-                .environmentObject(tabBar)
+            } else if tabBar.config.preserveTrailingSlot {
+                Tab(value: AppTab.messages) {
+                    Color.clear
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                } label: {
+                    Color.clear
+                        .frame(width: 44, height: 44)
+                        .accessibilityHidden(true)
+                }
             }
             
             // Native “separate” trailing button, like Apple News.
@@ -83,13 +68,42 @@ struct MainContainerView: View {
             if newValue == .searchProxy {
                 showingSideNav = true
                 selection = oldValue == .searchProxy ? .home : oldValue
+                return
+            }
+            
+            if tabBar.config.messages == nil && newValue == .messages {
+                selection = oldValue
+            }
+        }
+        .onChange(of: tabBar.config) { oldValue, newValue in
+            if newValue == .dailyHabits {
+                homePath = NavigationPath()
+            }
+            
+            if oldValue == .dailyHabits && newValue != .dailyHabits {
+                selection = .home
+            }
+            
+            if newValue.messages == nil && selection == .messages {
+                selection = .home
             }
         }
     }
     
     private func open(_ route: SideNavRoute) {
-        // For now, all side-nav routes push on the Home tab stack.
+        // All routes start on the Home tab.
         selection = .home
+        
+        if route == .dailyHabits {
+            // Switch the entire experience into the dedicated Daily Habits tab
+            // instead of stacking another instance that immediately gets popped.
+            homePath = NavigationPath()
+            if tabBar.config != .dailyHabits {
+                tabBar.config = .dailyHabits
+            }
+            return
+        }
+        
         DispatchQueue.main.async {
             homePath.append(route)
         }
@@ -129,7 +143,7 @@ struct MainContainerView: View {
                 .tabBarConfig(.productivity)
         case .dailyHabits:
             DailyHabitsView()
-                .tabBarConfig(.productivity)
+                .tabBarConfig(.dailyHabits)
         case .checklists:
             ChecklistsView()
                 .tabBarConfig(.productivity)
@@ -137,6 +151,88 @@ struct MainContainerView: View {
         case .managePlan:
             ManagePlanView()
                 .tabBarConfig(.subscriptions)
+        }
+    }
+}
+
+// MARK: - Tab Selection
+
+private extension MainContainerView {
+    @ViewBuilder
+    func homeTabContent() -> some View {
+        NavigationStack(path: $homePath) {
+            homeRootView()
+                .navigationDestination(for: SideNavRoute.self) { route in
+                    destination(for: route)
+                }
+        }
+    }
+    
+    @ViewBuilder
+    private func homeRootView() -> some View {
+        if tabBar.config == .dailyHabits {
+            DailyHabitsView()
+                .tabBarConfig(.dailyHabits)
+        } else {
+            HomeDashboardView()
+                .tabBarConfig(.default)
+        }
+    }
+    
+    @ViewBuilder
+    func exploreTabContent() -> some View {
+        if tabBar.config == .dailyHabits {
+            NavigationStack {
+                ChallengesTabView()
+                    .tabBarConfig(.dailyHabits)
+            }
+        } else {
+            NavigationStack {
+                PlaceholderView(
+                    title: "Explore",
+                    icon: "safari.fill",
+                    description: "Discover new content and explore features"
+                )
+                .tabBarConfig(.default)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    func alertsTabContent() -> some View {
+        if tabBar.config == .dailyHabits {
+            NavigationStack {
+                AnalyticsTabView()
+                    .tabBarConfig(.dailyHabits)
+            }
+        } else {
+            NavigationStack {
+                PlaceholderView(
+                    title: "Notifications",
+                    icon: "bell.fill",
+                    description: "Stay updated with your latest alerts"
+                )
+                .tabBarConfig(.default)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    func messagesTabContent() -> some View {
+        if tabBar.config == .dailyHabits {
+            NavigationStack {
+                AddNewHabitTabView()
+                    .tabBarConfig(.dailyHabits)
+            }
+        } else {
+            NavigationStack {
+                PlaceholderView(
+                    title: "Messages",
+                    icon: "envelope.fill",
+                    description: "View and manage your messages"
+                )
+                .tabBarConfig(.default)
+            }
         }
     }
 }

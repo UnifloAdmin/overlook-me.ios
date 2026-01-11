@@ -10,7 +10,8 @@ struct TabBarConfiguration: Equatable {
     var home: TabItemStyle
     var explore: TabItemStyle
     var alerts: TabItemStyle
-    var messages: TabItemStyle
+    var messages: TabItemStyle?
+    var preserveTrailingSlot: Bool = false
     
     static let `default` = TabBarConfiguration(
         home: .init(title: "Home", systemImage: "house.fill"),
@@ -31,6 +32,14 @@ struct TabBarConfiguration: Equatable {
         explore: .init(title: "Tasks", systemImage: "checklist"),
         alerts: .init(title: "Habits", systemImage: "checkmark.circle"),
         messages: .init(title: "Lists", systemImage: "list.bullet.rectangle")
+    )
+    
+    static let dailyHabits = TabBarConfiguration(
+        home: .init(title: "Habits", systemImage: "checkmark.circle.fill"),
+        explore: .init(title: "Challenges", systemImage: "flag.2.crossed"),
+        alerts: .init(title: "Analytics", systemImage: "chart.bar.xaxis"),
+        messages: nil,
+     
     )
     
     static let subscriptions = TabBarConfiguration(

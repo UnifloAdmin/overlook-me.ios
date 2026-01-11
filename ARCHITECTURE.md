@@ -25,7 +25,7 @@ The app is organized into three distinct layers:
 
 ```swift
 TabView(selection: $tab) {
-  Tab("Home", systemImage: "house.fill", value: .home) { HomeView() }
+  Tab("Home", systemImage: "house.fill", value: .home) { HomeDashboardView() }
   Tab("Explore", systemImage: "safari.fill", value: .explore) { ExploreView() }
   Tab(value: .searchProxy, role: .search) { Color.clear } // detached trailing pill/button
 }
@@ -36,7 +36,7 @@ TabView(selection: $tab) {
 - **Apply Liquid Glass to custom surfaces (only when needed)**:
 
 ```swift
-if #available(iOS 26.0, *) {
+if #available(iOS 26.2, *) {
   GlassEffectContainer {
     YourView().glassEffect(in: .capsule) // or .rect(cornerRadius:)
   }

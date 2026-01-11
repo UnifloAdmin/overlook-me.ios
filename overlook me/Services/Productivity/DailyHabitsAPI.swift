@@ -204,13 +204,15 @@ extension DailyHabitsAPI {
 
     /// POST `/dailyhabits?userId=...&oauthId=...`
     func createHabit(userId: String, habit: CreateDailyHabitRequestDTO, oauthId: String? = nil) async throws -> DailyHabitDTO {
-        try await client.request(
+        struct Response: Codable { let message: String?; let habit: DailyHabitDTO }
+        let response: Response = try await client.request(
             .post,
             path: "dailyhabits",
             query: ["userId": userId, "oauthId": oauthId],
             headers: [:],
             body: habit
         )
+        return response.habit
     }
 
     /// PUT `/dailyhabits/{habitId}?userId=...&oauthId=...`

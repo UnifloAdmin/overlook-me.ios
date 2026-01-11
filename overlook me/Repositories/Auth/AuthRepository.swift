@@ -182,6 +182,7 @@ struct StubAuthRepository: AuthRepository {
         
         let user = User(
             id: "stub_user_id",
+            oauthId: nil,
             email: "user@example.com",
             name: "Test User",
             picture: nil,
@@ -202,6 +203,7 @@ struct StubAuthRepository: AuthRepository {
     func getUserInfo(accessToken: String) async throws -> User {
         return User(
             id: "stub_user_id",
+            oauthId: nil,
             email: "user@example.com",
             name: "Test User",
             picture: nil,

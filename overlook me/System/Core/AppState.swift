@@ -13,6 +13,7 @@ struct AppState {
     var system = System()
     var auth = AuthState()
     var items = ItemsState()
+    var habits = HabitsState()
 }
 
 extension AppState {
@@ -33,6 +34,14 @@ extension AppState {
 extension AppState {
     struct ItemsState {
         var items: [Item] = []
+        var isLoading: Bool = false
+        var error: Error?
+    }
+}
+
+extension AppState {
+    struct HabitsState {
+        var habits: [DailyHabitDTO] = []
         var isLoading: Bool = false
         var error: Error?
     }

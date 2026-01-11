@@ -25,16 +25,23 @@ extension DIContainer {
     struct Interactors {
         let authInteractor: AuthInteractor
         let itemsInteractor: ItemsInteractor
+        let habitsInteractor: HabitsInteractor
         
-        init(authInteractor: AuthInteractor, itemsInteractor: ItemsInteractor) {
+        init(
+            authInteractor: AuthInteractor,
+            itemsInteractor: ItemsInteractor,
+            habitsInteractor: HabitsInteractor
+        ) {
             self.authInteractor = authInteractor
             self.itemsInteractor = itemsInteractor
+            self.habitsInteractor = habitsInteractor
         }
         
         static var stub: Self {
             .init(
                 authInteractor: StubAuthInteractor(),
-                itemsInteractor: StubItemsInteractor()
+                itemsInteractor: StubItemsInteractor(),
+                habitsInteractor: StubHabitsInteractor()
             )
         }
     }
@@ -46,16 +53,23 @@ extension DIContainer {
     struct Repositories {
         let authRepository: AuthRepository
         let itemsRepository: ItemsRepository
+        let habitsRepository: HabitsRepository
         
-        init(authRepository: AuthRepository, itemsRepository: ItemsRepository) {
+        init(
+            authRepository: AuthRepository,
+            itemsRepository: ItemsRepository,
+            habitsRepository: HabitsRepository
+        ) {
             self.authRepository = authRepository
             self.itemsRepository = itemsRepository
+            self.habitsRepository = habitsRepository
         }
         
         static var stub: Self {
             .init(
                 authRepository: StubAuthRepository(),
-                itemsRepository: StubItemsRepository()
+                itemsRepository: StubItemsRepository(),
+                habitsRepository: StubHabitsRepository()
             )
         }
     }

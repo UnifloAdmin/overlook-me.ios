@@ -28,7 +28,13 @@ extension AppEnvironment {
     private static func configuredRepositories(modelContainer: ModelContainer) -> DIContainer.Repositories {
         let authRepository = RealAuthRepository()
         let itemsRepository = RealItemsRepository(modelContainer: modelContainer)
-        return .init(authRepository: authRepository, itemsRepository: itemsRepository)
+        let habitsAPI = DailyHabitsAPI(client: LoggingAPIClient(base: AppAPIClient.live()))
+        let habitsRepository = RealHabitsRepository(api: habitsAPI)
+        return .init(
+            authRepository: authRepository,
+            itemsRepository: itemsRepository,
+            habitsRepository: habitsRepository
+        )
     }
     
     private static func configuredInteractors(
@@ -43,6 +49,14 @@ extension AppEnvironment {
             appState: appState,
             repository: repositories.itemsRepository
         )
-        return .init(authInteractor: authInteractor, itemsInteractor: itemsInteractor)
+        let habitsInteractor = RealHabitsInteractor(
+            appState: appState,
+            repository: repositories.habitsRepository
+        )
+        return .init(
+            authInteractor: authInteractor,
+            itemsInteractor: itemsInteractor,
+            habitsInteractor: habitsInteractor
+        )
     }
 }

@@ -77,6 +77,7 @@ extension DIContainer {
         appState.state.auth.isAuthenticated = true
         appState.state.auth.user = User(
             id: "preview_user",
+            oauthId: "auth0|preview",
             email: "user@example.com",
             name: "Preview User",
             picture: nil,

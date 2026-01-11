@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct SideNavigationView: View {
     @Environment(\.injected) private var container: DIContainer
@@ -14,6 +15,7 @@ struct SideNavigationView: View {
     
     private var state: AppState { container.appState.state }
     private var interactor: AuthInteractor { container.interactors.authInteractor }
+    @Environment(\.openURL) private var openURL
     
     var body: some View {
         NavigationStack {
@@ -78,11 +80,13 @@ struct SideNavigationView: View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
                 userProfileRow
+                Spacer(minLength: 12)
+                settingsIconButton
                 logoutIconButton
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .pillBackground()
+            .liquidGlassBackground()
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
@@ -136,6 +140,17 @@ struct SideNavigationView: View {
         .accessibilityLabel("Sign Out")
     }
     
+    private var settingsIconButton: some View {
+        Button(action: openAccountSettings) {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Account Settings")
+    }
+    
     private var defaultAvatar: some View {
         Image(systemName: "person.circle.fill")
             .resizable()
@@ -149,6 +164,11 @@ struct SideNavigationView: View {
         }
     }
     
+    private func openAccountSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
+    }
+    
     private func close() {
         isPresented = false
     }
@@ -156,23 +176,28 @@ struct SideNavigationView: View {
 
 // MARK: - Styling
 
-private struct PillBackgroundModifier: ViewModifier {
+private struct LiquidGlassBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
-        content
-            .background {
-                Capsule(style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
-                    )
-            }
+        if #available(iOS 18.0, *) {
+            content
+                .glassEffect(.regular, in: .capsule)
+        } else {
+            content
+                .background {
+                    Capsule(style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                        )
+                }
+        }
     }
 }
 
 private extension View {
-    func pillBackground() -> some View {
-        modifier(PillBackgroundModifier())
+    func liquidGlassBackground() -> some View {
+        modifier(LiquidGlassBackgroundModifier())
     }
 }
 

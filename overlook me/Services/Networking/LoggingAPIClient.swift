@@ -20,7 +20,9 @@ struct LoggingAPIClient: APIClient {
         body: (any Encodable)?
     ) async throws -> T {
         log(makeMessage(method: method, path: path, query: query, headers: headers, body: body))
-        return try await base.request(method, path: path, query: query, headers: headers, body: body)
+        let response: T = try await base.request(method, path: path, query: query, headers: headers, body: body)
+        log(makeResponseMessage(response: response, path: path))
+        return response
     }
 
     private func makeMessage(
@@ -46,6 +48,39 @@ struct LoggingAPIClient: APIClient {
         lines.append("- headers: \(headersString.isEmpty ? "(none)" : headersString)")
         lines.append("- body: \(body == nil ? "(none)" : String(describing: body!))")
         return lines.joined(separator: "\n")
+    }
+
+    private func makeResponseMessage<T>(response: T, path: String) -> String {
+        var lines: [String] = []
+        lines.append("API Response (\(path)):")
+        if let encodable = response as? any Encodable,
+           let jsonData = try? jsonEncoder.encode(AnyEncodable(encodable)),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            lines.append(jsonString)
+        } else {
+            lines.append(String(describing: response))
+        }
+        return lines.joined(separator: "\n")
+    }
+    
+    private var jsonEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+}
+
+private struct AnyEncodable: Encodable {
+    private let encodeFunc: (Encoder) throws -> Void
+    
+    init(_ encodable: any Encodable) {
+        self.encodeFunc = { encoder in
+            try encodable.encode(to: encoder)
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        try encodeFunc(encoder)
     }
 }
 

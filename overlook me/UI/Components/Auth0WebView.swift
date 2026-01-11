@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
-import WebKit
+import AuthenticationServices
 import CryptoKit
+import UIKit
 
-/// In-app WebView for Auth0 authentication
-struct Auth0WebView: UIViewRepresentable {
+/// Auth0 login surface that relies on `ASWebAuthenticationSession`
+/// to satisfy Google/Apple secure browser requirements.
+struct Auth0WebView: UIViewControllerRepresentable {
     let onSuccess: (String, String, String?) -> Void // accessToken, idToken, refreshToken
     let onError: (Error) -> Void
     
@@ -34,36 +36,20 @@ struct Auth0WebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             codeVerifier: codeVerifier,
+            codeChallenge: codeChallenge,
             state: state,
             onSuccess: onSuccess,
             onError: onError
         )
     }
     
-    func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
-        webView.navigationDelegate = context.coordinator
-        
-        // Build Auth0 authorization URL
-        var components = URLComponents(string: "https://\(Auth0Config.domain)/authorize")!
-        components.queryItems = [
-            URLQueryItem(name: "client_id", value: Auth0Config.clientId),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: Auth0Config.callbackURL),
-            URLQueryItem(name: "scope", value: Auth0Config.scope),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "code_challenge", value: codeChallenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256")
-        ]
-        
-        if let url = components.url {
-            webView.load(URLRequest(url: url))
-        }
-        
-        return webView
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = AuthSessionViewController()
+        controller.coordinator = context.coordinator
+        return controller
     }
     
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
     
     // MARK: - PKCE Helpers
     
@@ -89,49 +75,102 @@ struct Auth0WebView: UIViewRepresentable {
     
     // MARK: - Coordinator
     
-    class Coordinator: NSObject, WKNavigationDelegate {
-        let codeVerifier: String
-        let state: String
-        let onSuccess: (String, String, String?) -> Void
-        let onError: (Error) -> Void
+    class Coordinator: NSObject, ASWebAuthenticationPresentationContextProviding {
+        private let codeVerifier: String
+        private let codeChallenge: String
+        private let state: String
+        private let onSuccess: (String, String, String?) -> Void
+        private let onError: (Error) -> Void
+        private let callbackScheme: String
+        
+        private var authSession: ASWebAuthenticationSession?
+        private var didStartSession = false
+        private weak var presentingViewController: UIViewController?
         
         init(
             codeVerifier: String,
+            codeChallenge: String,
             state: String,
             onSuccess: @escaping (String, String, String?) -> Void,
             onError: @escaping (Error) -> Void
         ) {
             self.codeVerifier = codeVerifier
+            self.codeChallenge = codeChallenge
             self.state = state
             self.onSuccess = onSuccess
             self.onError = onError
+            self.callbackScheme = URLComponents(string: Auth0Config.callbackURL)?.scheme ?? "overlookme"
         }
         
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            guard let url = navigationAction.request.url else {
-                decisionHandler(.allow)
+        func startAuthentication(presentingViewController: UIViewController) {
+            guard !didStartSession else { return }
+            didStartSession = true
+            self.presentingViewController = presentingViewController
+            
+            guard let authURL = buildAuthorizationURL() else {
+                onError(WebViewError.invalidAuthURL)
                 return
             }
             
-            // Check if this is our callback URL (case-insensitive for scheme)
-            let callbackScheme = "overlookme://"
-            if url.absoluteString.lowercased().starts(with: callbackScheme.lowercased()) {
-                decisionHandler(.cancel)
-                handleCallback(url: url)
-                return
+            let session = ASWebAuthenticationSession(
+                url: authURL,
+                callbackURLScheme: callbackScheme
+            ) { [weak self] callbackURL, error in
+                guard let self else { return }
+                
+                if let error {
+                    self.onError(error)
+                    return
+                }
+                
+                guard let callbackURL else {
+                    self.onError(WebViewError.invalidCallback)
+                    return
+                }
+                
+                self.handleCallback(url: callbackURL)
             }
             
-            decisionHandler(.allow)
+            session.presentationContextProvider = self
+            if #available(iOS 13.0, *) {
+                session.prefersEphemeralWebBrowserSession = true
+            }
+            
+            if !session.start() {
+                onError(WebViewError.sessionFailedToStart)
+            }
+            
+            authSession = session
         }
         
-        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {}
+        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+            if let window = presentingViewController?.view.window {
+                return window
+            }
+            
+            let scenes = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+            for scene in scenes {
+                if let window = scene.windows.first(where: { $0.isKeyWindow }) {
+                    return window
+                }
+            }
+            
+            return ASPresentationAnchor()
+        }
         
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {}
-        
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {}
-        
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            onError(error)
+        private func buildAuthorizationURL() -> URL? {
+            var components = URLComponents(string: "https://\(Auth0Config.domain)/authorize")
+            components?.queryItems = [
+                URLQueryItem(name: "client_id", value: Auth0Config.clientId),
+                URLQueryItem(name: "response_type", value: "code"),
+                URLQueryItem(name: "redirect_uri", value: Auth0Config.callbackURL),
+                URLQueryItem(name: "scope", value: Auth0Config.scope),
+                URLQueryItem(name: "state", value: state),
+                URLQueryItem(name: "code_challenge", value: codeChallenge),
+                URLQueryItem(name: "code_challenge_method", value: "S256")
+            ]
+            return components?.url
         }
         
         private func handleCallback(url: URL) {
@@ -141,30 +180,23 @@ struct Auth0WebView: UIViewRepresentable {
                 return
             }
             
-            // Check for error response from Auth0
             if let error = queryItems.first(where: { $0.name == "error" })?.value {
                 let errorDescription = queryItems.first(where: { $0.name == "error_description" })?.value ?? "Unknown error"
                 onError(WebViewError.auth0Error(error: error, description: errorDescription))
                 return
             }
             
-            // Extract authorization code and state
             guard let code = queryItems.first(where: { $0.name == "code" })?.value else {
                 onError(WebViewError.invalidCallback)
                 return
             }
             
-            guard let returnedState = queryItems.first(where: { $0.name == "state" })?.value else {
+            guard let returnedState = queryItems.first(where: { $0.name == "state" })?.value,
+                  returnedState == state else {
                 onError(WebViewError.invalidCallback)
                 return
             }
             
-            guard returnedState == state else {
-                onError(WebViewError.invalidCallback)
-                return
-            }
-            
-            // Exchange code for tokens
             Task {
                 do {
                     let tokens = try await exchangeCodeForTokens(code: code)
@@ -197,16 +229,22 @@ struct Auth0WebView: UIViewRepresentable {
             
             let (data, response) = try await URLSession.shared.data(for: request)
             
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw WebViewError.tokenExchangeFailed
-            }
-            
-            if httpResponse.statusCode != 200 {
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
                 throw WebViewError.tokenExchangeFailed
             }
             
             return try JSONDecoder().decode(TokenResponse.self, from: data)
         }
+    }
+}
+
+private final class AuthSessionViewController: UIViewController {
+    var coordinator: Auth0WebView.Coordinator?
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        coordinator?.startAuthentication(presentingViewController: self)
     }
 }
 
@@ -231,18 +269,24 @@ private struct TokenResponse: Codable {
 // MARK: - Errors
 
 enum WebViewError: LocalizedError {
+    case invalidAuthURL
     case invalidCallback
     case tokenExchangeFailed
     case auth0Error(error: String, description: String)
+    case sessionFailedToStart
     
     var errorDescription: String? {
         switch self {
+        case .invalidAuthURL:
+            return "Could not build authorization URL"
         case .invalidCallback:
             return "Invalid authorization callback"
         case .tokenExchangeFailed:
             return "Failed to exchange code for tokens"
         case .auth0Error(let error, let description):
             return "Auth0 Error: \(error) - \(description)"
+        case .sessionFailedToStart:
+            return "Unable to start secure browser session"
         }
     }
 }
