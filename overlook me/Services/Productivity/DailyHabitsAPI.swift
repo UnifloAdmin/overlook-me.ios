@@ -20,6 +20,7 @@ struct DailyHabitDTO: Codable, Sendable, Identifiable {
     let icon: String?
 
     let frequency: String?
+    let targetDays: [String]?
     let isIndefinite: Bool?
     let remindersEnabled: Bool?
     let priority: String?
@@ -35,6 +36,7 @@ struct DailyHabitDTO: Codable, Sendable, Identifiable {
     let longestStreak: Int?
     let totalCompletions: Int?
     let completionRate: Double?
+    let completionLogs: [HabitCompletionLogDTO]?
 
     let createdAt: String?
     let updatedAt: String?
@@ -125,6 +127,15 @@ struct LogHabitCompletionRequestDTO: Codable, Sendable {
     let generalNotes: String?
 }
 
+struct HabitCompletionLogDTO: Codable, Sendable {
+    let date: String
+    let completed: Bool
+    let value: Double?
+    let notes: String?
+    let completedAt: String?
+    let wasSkipped: Bool?
+}
+
 struct CheckInHabitRequestDTO: Codable, Sendable {
     let value: Double?
     let notes: String?
@@ -133,15 +144,6 @@ struct CheckInHabitRequestDTO: Codable, Sendable {
 struct CheckInHabitResponseDTO: Codable, Sendable {
     let message: String
     let habit: DailyHabitDTO
-}
-
-struct HabitCompletionDTO: Codable, Sendable {
-    let habitId: String
-    let habitName: String
-    let date: String
-    let completed: Bool
-    let value: Double?
-    let notes: String?
 }
 
 struct HabitStreakDTO: Codable, Sendable {
@@ -269,17 +271,6 @@ extension DailyHabitsAPI {
             query: ["userId": userId, "oauthId": oauthId],
             headers: [:],
             body: JSONValue.object([:])
-        )
-    }
-
-    /// GET `/dailyhabits/completions?userId=...&date=...`
-    func getCompletionsByDate(userId: String, date: String) async throws -> [HabitCompletionDTO] {
-        try await client.request(
-            .get,
-            path: "dailyhabits/completions",
-            query: ["userId": userId, "date": date],
-            headers: [:],
-            body: nil
         )
     }
 

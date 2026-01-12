@@ -22,7 +22,10 @@ struct URLSessionAPIClient: APIClient {
         self.responseDecoder = responseDecoder
         self.session = session
         self.jsonEncoder = jsonEncoder
-        self.jsonDecoder = jsonDecoder
+        
+        var decoder = jsonDecoder
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        self.jsonDecoder = decoder
     }
 
     func request<T: Decodable>(

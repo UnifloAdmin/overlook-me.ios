@@ -25,7 +25,7 @@ The app is organized into three distinct layers:
 
 ```swift
 TabView(selection: $tab) {
-  Tab("Home", systemImage: "house.fill", value: .home) { HomeDashboardView() }
+  Tab("Home", systemImage: "house.fill", value: .home) { HomeView() }
   Tab("Explore", systemImage: "safari.fill", value: .explore) { ExploreView() }
   Tab(value: .searchProxy, role: .search) { Color.clear } // detached trailing pill/button
 }

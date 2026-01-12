@@ -229,6 +229,38 @@ enum HabitWeekday: String, CaseIterable, Identifiable {
     
     static let weekdayPresetSet: Set<HabitWeekday> = [.monday, .tuesday, .wednesday, .thursday, .friday]
     static let weekendPresetSet: Set<HabitWeekday> = [.saturday, .sunday]
+    static let displayOrder: [HabitWeekday] = [.monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday]
+    
+    static func set(from targetDays: [String]?, frequency: String?) -> Set<HabitWeekday> {
+        if let targetDays, !targetDays.isEmpty {
+            let mapped = targetDays.compactMap { HabitWeekday.parse($0) }
+            if !mapped.isEmpty {
+                return Set(mapped)
+            }
+        }
+        guard let frequency else { return [] }
+        switch frequency.lowercased() {
+        case "weekdays":
+            return weekdayPresetSet
+        case "weekends":
+            return weekendPresetSet
+        case "daily":
+            return Set(displayOrder)
+        default:
+            return []
+        }
+    }
+    
+    private static func parse(_ value: String) -> HabitWeekday? {
+        let lower = value.lowercased()
+        if let exact = HabitWeekday(rawValue: lower) {
+            return exact
+        }
+        let short = String(lower.prefix(3))
+        return HabitWeekday.allCases.first { day in
+            day.shortLabel.lowercased() == short
+        }
+    }
     
     static func preset(_ frequency: HabitFrequency) -> [String]? {
         switch frequency {

@@ -14,10 +14,10 @@ struct TabBarConfiguration: Equatable {
     var preserveTrailingSlot: Bool = false
     
     static let `default` = TabBarConfiguration(
-        home: .init(title: "Home", systemImage: "house.fill"),
-        explore: .init(title: "Explore", systemImage: "safari.fill"),
-        alerts: .init(title: "Alerts", systemImage: "bell.fill"),
-        messages: .init(title: "Messages", systemImage: "envelope.fill")
+        home: .init(title: "home", systemImage: "house.fill"),
+        explore: .init(title: "Focus", systemImage: "safari.fill"),
+        alerts: .init(title: "health", systemImage: "bell.fill"),
+        messages: .init(title: "finances", systemImage: "dollarsign.circle.fill")
     )
     
     static let finance = TabBarConfiguration(

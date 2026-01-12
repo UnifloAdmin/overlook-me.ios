@@ -27,18 +27,24 @@ struct RealHabitsInteractor: HabitsInteractor {
             appState.state.habits.isLoading = false
             return
         }
-        let oauthId = authUser.oauthId
-        let backendUserId = oauthId.isEmpty ? authUser.id : oauthId
+        let userId = authUser.id
+        let oauthId = authUser.oauthId.isEmpty ? nil : authUser.oauthId
         
         do {
             let habits = try await repository.fetchHabits(
-                userId: backendUserId,
+                userId: userId,
                 oauthId: oauthId,
                 queryDate: date,
                 isActive: true,
                 isArchived: false
             )
             appState.state.habits.habits = habits
+            appState.state.habits.isLoading = false
+        } catch is CancellationError {
+            // Ignore cooperative cancellations triggered by view transitions or refresh hand-offs.
+            appState.state.habits.isLoading = false
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Treat URLSession-level cancellations the same way to avoid surfacing bogus errors.
             appState.state.habits.isLoading = false
         } catch {
             appState.state.habits.error = error

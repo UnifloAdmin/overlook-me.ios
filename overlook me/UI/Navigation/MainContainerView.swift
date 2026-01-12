@@ -55,7 +55,7 @@ struct MainContainerView: View {
                 Color.clear
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabBarMinimizeBehavior(.never)
         .sheet(isPresented: $showingSideNav) {
             SideNavigationView(
                 isPresented: $showingSideNav,
@@ -110,73 +110,8 @@ struct MainContainerView: View {
     }
     
     @ViewBuilder
-    private func destination(for route: SideNavRoute) -> some View {
-        switch route {
-        case .homeDashboard:
-            HomeDashboardView()
-                .tabBarConfig(.default)
-            
-        case .financeDashboard:
-            FinanceDashboardView()
-                .tabBarConfig(.finance)
-        case .bankAccounts:
-            BankAccountsView()
-                .tabBarConfig(.finance)
-        case .transactions:
-            TransactionsView()
-                .tabBarConfig(.finance)
-        case .budgets:
-            BudgetsView()
-                .tabBarConfig(.finance)
-        case .insights:
-            InsightsView()
-                .tabBarConfig(.finance)
-        case .netWorth:
-            NetWorthView()
-                .tabBarConfig(.finance)
-            
-        case .productivityDashboard:
-            ProductivityDashboardView()
-                .tabBarConfig(.productivity)
-        case .tasks:
-            TasksView()
-                .tabBarConfig(.productivity)
-        case .dailyHabits:
-            DailyHabitsView()
-                .tabBarConfig(.dailyHabits)
-        case .checklists:
-            ChecklistsView()
-                .tabBarConfig(.productivity)
-            
-        case .managePlan:
-            ManagePlanView()
-                .tabBarConfig(.subscriptions)
-        }
-    }
-}
-
-// MARK: - Tab Selection
-
-private extension MainContainerView {
-    @ViewBuilder
     func homeTabContent() -> some View {
-        NavigationStack(path: $homePath) {
-            homeRootView()
-                .navigationDestination(for: SideNavRoute.self) { route in
-                    destination(for: route)
-                }
-        }
-    }
-    
-    @ViewBuilder
-    private func homeRootView() -> some View {
-        if tabBar.config == .dailyHabits {
-            DailyHabitsView()
-                .tabBarConfig(.dailyHabits)
-        } else {
-            HomeDashboardView()
-                .tabBarConfig(.default)
-        }
+        HomeView(path: $homePath)
     }
     
     @ViewBuilder
@@ -188,12 +123,8 @@ private extension MainContainerView {
             }
         } else {
             NavigationStack {
-                PlaceholderView(
-                    title: "Explore",
-                    icon: "safari.fill",
-                    description: "Discover new content and explore features"
-                )
-                .tabBarConfig(.default)
+                FocusView()
+                    .tabBarConfig(.default)
             }
         }
     }
@@ -207,12 +138,8 @@ private extension MainContainerView {
             }
         } else {
             NavigationStack {
-                PlaceholderView(
-                    title: "Notifications",
-                    icon: "bell.fill",
-                    description: "Stay updated with your latest alerts"
-                )
-                .tabBarConfig(.default)
+                HealthView()
+                    .tabBarConfig(.default)
             }
         }
     }
@@ -226,12 +153,8 @@ private extension MainContainerView {
             }
         } else {
             NavigationStack {
-                PlaceholderView(
-                    title: "Messages",
-                    icon: "envelope.fill",
-                    description: "View and manage your messages"
-                )
-                .tabBarConfig(.default)
+                FinancesView()
+                    .tabBarConfig(.default)
             }
         }
     }
@@ -249,36 +172,6 @@ private enum AppTab: Hashable {
 }
 
 // MARK: - Placeholder View
-
-private struct PlaceholderView: View {
-    let title: String
-    let icon: String
-    let description: String
-    
-    var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            Image(systemName: icon)
-                .font(.system(size: 80))
-                .foregroundColor(.blue)
-            
-            Text(title)
-                .font(.largeTitle)
-                .fontWeight(.bold)
-            
-            Text(description)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            
-            Spacer()
-        }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
 
 // MARK: - Preview
 
