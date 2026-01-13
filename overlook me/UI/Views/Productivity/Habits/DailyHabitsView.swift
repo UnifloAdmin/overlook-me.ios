@@ -14,10 +14,12 @@ struct DailyHabitsView: View {
     @State private var isPresentingAddHabit = false
     @State private var selectedDate = Date()
     @State private var lastLoadedSignature: String?
+    @State private var lastLogsFetchDate: String? // Track when we last fetched logs (YYYY-MM-DD)
     @State private var displayedHabits: [DailyHabitDTO] = []
     @State private var selectedHabitForDetail: DailyHabitDTO?
     @State private var selectedHabitForNotification: DailyHabitDTO?
     @State private var selectedHabitForPomodoro: DailyHabitDTO?
+    @State private var selectedHabitForCompletion: (habit: DailyHabitDTO, actionType: HabitCompletionSheet.HabitActionType)?
     @State private var notificationUpdateTrigger = UUID()
     @State private var localCompletions: [String: HabitCompletionLogDTO] = [:]
     @State private var actionErrorMessage: String?
@@ -47,13 +49,13 @@ struct DailyHabitsView: View {
             gradientLayer
             
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
                     headerPlaceholder
                     habitsSection
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
-                .padding(.top, 125)  // Manual padding: status bar (~47) + nav bar (~44) + spacing (24)
+                .padding(.top, 130)  // Increased padding to push header content down
                 .padding(.bottom, 48)
                 .safeAreaPadding(.top, 0)
             }
@@ -108,6 +110,26 @@ struct DailyHabitsView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: Binding(
+            get: { selectedHabitForCompletion.map { $0.habit } },
+            set: { _ in selectedHabitForCompletion = nil }
+        )) { habit in
+            if let context = selectedHabitForCompletion {
+                HabitCompletionSheet(
+                    habit: context.habit,
+                    actionType: context.actionType,
+                    onComplete: { data in
+                        handleCompletionSubmit(habit: context.habit, data: data)
+                        selectedHabitForCompletion = nil
+                    },
+                    onCancel: {
+                        selectedHabitForCompletion = nil
+                    }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+        }
         .task { await loadHabitsIfNeeded(force: true) }
         .onChange(of: backendUserId) { _ in
             localCompletions = [:]
@@ -129,7 +151,7 @@ struct DailyHabitsView: View {
     
     
     private var headerPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(insightParagraph)
                 .font(.footnote)
                 .foregroundStyle(headerTextColor)
@@ -253,6 +275,9 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
         let dateString = Self.dayFormatter.string(from: selectedDate)
         let signature = "\(userId)|\(dateString)"
         
+        // Check if we need to fetch logs (different day or forced)
+        let needsLogsFetch = force || lastLogsFetchDate != dateString
+        
         guard force || lastLoadedSignature != signature || habitsState.habits.isEmpty else {
             await MainActor.run {
                 displayedHabits = container.appState.state.habits.habits
@@ -262,8 +287,122 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
         }
         lastLoadedSignature = signature
         await habitsInteractor.loadHabits(for: selectedDate)
+        
+        var habitsWithLogs = container.appState.state.habits.habits
+        
+        // Only fetch logs if it's a new day or forced refresh
+        if needsLogsFetch {
+            #if DEBUG
+            print("🔄 Fetching completion logs for \(habitsWithLogs.count) habits (date: \(dateString))...")
+            #endif
+            
+            let oauthId = container.appState.state.auth.user?.oauthId
+            
+            // Fetch logs in parallel using TaskGroup
+            await withTaskGroup(of: (String, [HabitCompletionLogDTO]).self) { group in
+                for habit in habitsWithLogs {
+                    group.addTask {
+                        do {
+                            let entries = try await self.habitAPI.getCompletionLogs(
+                                habitId: habit.id,
+                                userId: userId,
+                                oauthId: oauthId,
+                                startDate: nil,
+                                endDate: nil,
+                                page: nil,
+                                pageSize: 50
+                            )
+                            let logs = entries.map {
+                                HabitCompletionLogDTO(
+                                    date: $0.date,
+                                    completed: $0.completed,
+                                    value: nil,
+                                    notes: $0.generalNotes,
+                                    completedAt: $0.completedAt,
+                                    wasSkipped: $0.wasSkipped
+                                )
+                            }
+                            #if DEBUG
+                            print("   ✅ \(habit.name): \(logs.count) logs")
+                            #endif
+                            return (habit.id, logs)
+                        } catch {
+                            #if DEBUG
+                            print("   ❌ \(habit.name): \(error)")
+                            #endif
+                            return (habit.id, [])
+                        }
+                    }
+                }
+                
+                // Collect results as they come in (parallel execution)
+                for await (habitId, logs) in group {
+                    if let index = habitsWithLogs.firstIndex(where: { $0.id == habitId }) {
+                        habitsWithLogs[index] = DailyHabitDTO(
+                            id: habitsWithLogs[index].id,
+                            userId: habitsWithLogs[index].userId,
+                            oauthId: habitsWithLogs[index].oauthId,
+                            name: habitsWithLogs[index].name,
+                            description: habitsWithLogs[index].description,
+                            category: habitsWithLogs[index].category,
+                            color: habitsWithLogs[index].color,
+                            icon: habitsWithLogs[index].icon,
+                            frequency: habitsWithLogs[index].frequency,
+                            targetDays: habitsWithLogs[index].targetDays,
+                            isIndefinite: habitsWithLogs[index].isIndefinite,
+                            remindersEnabled: habitsWithLogs[index].remindersEnabled,
+                            priority: habitsWithLogs[index].priority,
+                            isPinned: habitsWithLogs[index].isPinned,
+                            isPositive: habitsWithLogs[index].isPositive,
+                            sortOrder: habitsWithLogs[index].sortOrder,
+                            tags: habitsWithLogs[index].tags,
+                            isActive: habitsWithLogs[index].isActive,
+                            isArchived: habitsWithLogs[index].isArchived,
+                            currentStreak: habitsWithLogs[index].currentStreak,
+                            longestStreak: habitsWithLogs[index].longestStreak,
+                            totalCompletions: habitsWithLogs[index].totalCompletions,
+                            completionRate: habitsWithLogs[index].completionRate,
+                            completionLogs: logs,
+                            createdAt: habitsWithLogs[index].createdAt,
+                            updatedAt: habitsWithLogs[index].updatedAt
+                        )
+                        
+                        // Update displayed habits immediately as each habit loads (progressive rendering)
+                        await MainActor.run {
+                            if let displayIndex = displayedHabits.firstIndex(where: { $0.id == habitId }) {
+                                displayedHabits[displayIndex] = habitsWithLogs[index]
+                            }
+                        }
+                    }
+                }
+            }
+            
+            await MainActor.run {
+                lastLogsFetchDate = dateString // Cache for this day
+            }
+        }
+        
         await MainActor.run {
-            displayedHabits = container.appState.state.habits.habits
+            displayedHabits = habitsWithLogs
+            container.appState.state.habits.habits = habitsWithLogs
+            
+            #if DEBUG
+            print("📦 Final state: \(displayedHabits.count) habits with completion logs")
+            for habit in displayedHabits {
+                let logsCount = habit.completionLogs?.count ?? 0
+                let todayLog = habit.completionLogs?.first(where: { log in
+                    guard let logDate = Self.parseDate(log.date) else { return false }
+                    let logKey = Self.utcDayKeyFormatter.string(from: logDate)
+                    return logKey == dateString
+                })
+                if let todayLog = todayLog {
+                    print("   📋 \(habit.name): \(logsCount) logs | Today: completed=\(todayLog.completed), skipped=\(todayLog.wasSkipped ?? false)")
+                } else {
+                    print("   📋 \(habit.name): \(logsCount) logs | Today: NO LOG")
+                }
+            }
+            #endif
+            
             reconcileLocalCompletions(with: displayedHabits)
             if let detailHabit = selectedHabitForDetail,
                let refreshed = displayedHabits.first(where: { $0.id == detailHabit.id }) {
@@ -277,11 +416,16 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
         guard !localCompletions.isEmpty else { return }
         let dayKey = Self.dayFormatter.string(from: selectedDate)
         localCompletions = localCompletions.filter { habitId, override in
-            guard override.matches(dayKey: dayKey) else { return false }
+            guard override.matchesLocalDay(dayKey: dayKey) else { return false }
             guard let logs = habits.first(where: { $0.id == habitId })?.completionLogs else {
                 return true
             }
-            return !logs.contains(where: { $0.matches(dayKey: dayKey) })
+            // Check if any log matches this day using UTC parsing
+            return !logs.contains(where: { log in
+                guard let logDate = Self.parseDate(log.date) else { return false }
+                let logKey = Self.utcDayKeyFormatter.string(from: logDate)
+                return logKey == dayKey
+            })
         }
     }
 
@@ -292,6 +436,20 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
             actionErrorMessage = "You've already logged this habit for \(dateLabel)."
             return
         }
+        
+        // For SKIP and FAILED actions, show the completion sheet
+        switch action {
+        case .skipDay(let habit):
+            selectedHabitForCompletion = (habit, .skip)
+            return
+        case .failedToResist(let habit):
+            selectedHabitForCompletion = (habit, .failedToResist)
+            return
+        case .checkIn, .resisted:
+            // For SUCCESS actions, complete immediately
+            break
+        }
+        
         guard let userId = backendUserId else {
             actionErrorMessage = "Please sign in again to update this habit."
             return
@@ -322,14 +480,21 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
                     if let detailHabit = selectedHabitForDetail, detailHabit.id == updatedHabit.id {
                         selectedHabitForDetail = updatedHabit
                     }
+                    // Use the same date format as backend (ISO with time) for consistency
                     localCompletions[updatedHabit.id] = HabitCompletionLogDTO(
-                        date: dayKey,
+                        date: request.date,  // Use the date from the request (ISO format)
                         completed: request.completed,
                         value: request.value,
                         notes: request.notes,
                         completedAt: isoDateFormatter.string(from: Date()),
                         wasSkipped: request.wasSkipped ?? false
                     )
+                    #if DEBUG
+                    print("✅ Created local completion for \(updatedHabit.name):")
+                    print("   Date: \(request.date)")
+                    print("   Completed: \(request.completed)")
+                    print("   WasSkipped: \(request.wasSkipped ?? false)")
+                    #endif
                 }
             } catch {
                 await MainActor.run {
@@ -342,14 +507,131 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
             }
         }
     }
+    
+    private func handleCompletionSubmit(habit: DailyHabitDTO, data: HabitCompletionData) {
+        guard let userId = backendUserId else {
+            actionErrorMessage = "Please sign in again to update this habit."
+            return
+        }
+        
+        let oauthId = container.appState.state.auth.user?.oauthId
+        let targetDate = selectedDate
+        pendingHabitId = habit.id
+        
+        Task {
+            do {
+                let localCalendar = Calendar.current
+                let dayStartLocal = localCalendar.startOfDay(for: targetDate)
+                
+                let localDateFormatter = DateFormatter()
+                localDateFormatter.dateFormat = "yyyy-MM-dd"
+                localDateFormatter.timeZone = localCalendar.timeZone
+                let dateString = localDateFormatter.string(from: dayStartLocal) + "T00:00:00.000Z"
+                
+                let completedAt = isoDateFormatter.string(from: Date())
+                
+                let request = LogHabitCompletionRequestDTO(
+                    habitId: habit.id,
+                    date: dateString,
+                    completed: data.completed,
+                    value: nil,
+                    notes: data.notes,
+                    wasSkipped: data.wasSkipped,
+                    completedAt: completedAt,
+                    metrics: [],
+                    reason: data.reason,
+                    generalNotes: data.notes
+                )
+                
+                let updatedHabit = try await habitAPI.logCompletion(
+                    habitId: habit.id,
+                    userId: userId,
+                    completion: request,
+                    oauthId: oauthId
+                )
+                
+                await MainActor.run {
+                    container.appState.state.habits.habits = container.appState.state.habits.habits.map { current in
+                        current.id == updatedHabit.id ? updatedHabit : current
+                    }
+                    displayedHabits = displayedHabits.map { current in
+                        current.id == updatedHabit.id ? updatedHabit : current
+                    }
+                    if let detailHabit = selectedHabitForDetail, detailHabit.id == updatedHabit.id {
+                        selectedHabitForDetail = updatedHabit
+                    }
+                    localCompletions[updatedHabit.id] = HabitCompletionLogDTO(
+                        date: request.date,
+                        completed: request.completed,
+                        value: request.value,
+                        notes: request.notes,
+                        completedAt: completedAt,
+                        wasSkipped: request.wasSkipped ?? false
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    actionErrorMessage = "We couldn't update \"\(habit.name)\". Please try again."
+                }
+            }
+            
+            await MainActor.run {
+                pendingHabitId = nil
+            }
+        }
+    }
 
     private func completionLog(for habit: DailyHabitDTO) -> HabitCompletionLogDTO? {
+        // Use local timezone for the selected date (UI date)
         let dayKey = Self.dayFormatter.string(from: selectedDate)
-        if let override = localCompletions[habit.id], override.matches(dayKey: dayKey) {
+        
+        #if DEBUG
+        print("🔍 completionLog for habit: \(habit.name)")
+        print("   📅 Selected date (local): \(selectedDate)")
+        print("   🔑 Day key (local): \(dayKey)")
+        print("   💾 Local completions count: \(localCompletions.count)")
+        if let localComp = localCompletions[habit.id] {
+            print("   ✅ Found local completion: \(localComp.date)")
+        }
+        #endif
+        
+        // Check local completions first
+        if let override = localCompletions[habit.id], override.matchesLocalDay(dayKey: dayKey) {
+            #if DEBUG
+            print("   ✓ Returning local completion")
+            #endif
             return override
         }
-        guard let logs = habit.completionLogs else { return nil }
-        return logs.first(where: { $0.matches(dayKey: dayKey) })
+        
+        // Check habit logs - need to parse UTC dates and match against local day
+        guard let logs = habit.completionLogs else { 
+            #if DEBUG
+            print("   ❌ No completion logs found")
+            #endif
+            return nil 
+        }
+        
+        #if DEBUG
+        print("   📋 Checking \(logs.count) logs:")
+        for (index, log) in logs.enumerated() {
+            print("      Log \(index): \(log.date)")
+            if let logDate = Self.parseDate(log.date) {
+                let logKey = Self.utcDayKeyFormatter.string(from: logDate)
+                print("         Parsed date: \(logDate)")
+                print("         UTC key: \(logKey)")
+                print("         Match? \(logKey == dayKey)")
+            } else {
+                print("         ⚠️ Failed to parse")
+            }
+        }
+        #endif
+        
+        return logs.first(where: { log in
+            guard let logDate = Self.parseDate(log.date) else { return false }
+            // Log dates are stored as UTC midnight, extract the date part using UTC formatter
+            let logKey = Self.utcDayKeyFormatter.string(from: logDate)
+            return logKey == dayKey
+        })
     }
     
     private func hasLoggedAction(for habit: DailyHabitDTO) -> Bool {
@@ -375,12 +657,22 @@ private extension Color {
 }
 
 private extension DailyHabitsView {
+    // Formatter for UI dates (Local Timezone) - matches HabitCycleTracker
+    // Used to generate keys for the selected date
     static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .iso8601)
-        formatter.timeZone = TimeZone(secondsFromGMT: 0) 
-        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.calendar = .current
+        formatter.timeZone = .current
+        return formatter
+    }()
+    
+    // Formatter for Log dates (UTC) - matches HabitCycleTracker
+    // Used to parse/match the YYYY-MM-DD part from the stored UTC logs
+    static let utcDayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         return formatter
     }()
     
@@ -388,6 +680,54 @@ private extension DailyHabitsView {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
+        return formatter
+    }()
+    
+    // MARK: - Date Parsing (matches HabitCycleTracker)
+    
+    static func parseDate(_ string: String) -> Date? {
+        if let date = isoFormatterWithFractional.date(from: string) {
+            return date
+        }
+        if let date = isoFormatter.date(from: string) {
+            return date
+        }
+        if let date = isoNoTimezoneDateTimeFormatter.date(from: string) {
+            return date
+        }
+        return isoDateOnlyFormatter.date(from: string)
+    }
+    
+    private static let isoFormatterWithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+    
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
+    // Backend may send `"2026-01-12T00:00:00"` (no timezone). Assume UTC.
+    private static let isoNoTimezoneDateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return formatter
+    }()
+
+    private static let isoDateOnlyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
 }
@@ -468,17 +808,20 @@ private struct HabitCardView: View {
             headerRow
             
             Divider()
+                .frame(height: 0.5)
                 .opacity(0.5)
             
             metaRow
             
             Divider()
+                .frame(height: 0.5)
                 .opacity(0.5)
             
             actionRow
             
             if let extraContent {
                 Divider()
+                    .frame(height: 0.5)
                     .opacity(0.5)
                 extraContent
             }
@@ -495,7 +838,7 @@ private struct HabitCardView: View {
     private var headerRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(habit.name)
-                .font(.title3.weight(.bold))
+                .font(.title2.weight(.bold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .lineLimit(2)
                 .truncationMode(.tail)
@@ -664,13 +1007,35 @@ private struct HabitCardView: View {
             onAction(action)
         } label: {
             Label(title, systemImage: systemIcon)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .background(palette.fillColor)
                 .foregroundStyle(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(
+                    ZStack {
+                        Capsule()
+                            .fill(palette.fillColor)
+                        
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.3)
+                    }
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            .linearGradient(
+                                colors: [
+                                    Color.white.opacity(0.4),
+                                    Color.white.opacity(0.1)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
         }
         .buttonStyle(.plain)
         .disabled(isActionDisabled)
@@ -689,19 +1054,32 @@ private struct HabitCardView: View {
         tint: Color,
         action: HabitAction
     ) -> some View {
-        let fill = Color(uiColor: .secondarySystemFill)
-        let foreground = Color.secondary
         return Button {
             onAction(action)
         } label: {
             Label(title, systemImage: systemIcon)
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .background(fill)
-                .foregroundStyle(foreground)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(.secondary)
+                .background(
+                    ZStack {
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                        
+                        Capsule()
+                            .fill(Color(uiColor: .secondarySystemFill))
+                            .opacity(0.5)
+                    }
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            Color.white.opacity(colorScheme == .dark ? 0.15 : 0.3),
+                            lineWidth: 0.5
+                        )
+                )
         }
         .buttonStyle(.plain)
         .disabled(isActionDisabled)
@@ -769,13 +1147,11 @@ private struct HabitCardView: View {
         func palette(for scheme: ColorScheme) -> ButtonPalette {
             switch self {
             case .checkIn:
-                return ButtonPalette(
-                    fillColor: Color.blue.opacity(scheme == .dark ? 0.85 : 0.95)
-                )
+                let baseBlue = Color.blue
+                return ButtonPalette(fillColor: baseBlue)
             case .resisted:
-                return ButtonPalette(
-                    fillColor: Color.green.opacity(scheme == .dark ? 0.85 : 0.9)
-                )
+                let deepGreen = Color(red: 0.13, green: 0.55, blue: 0.13)
+                return ButtonPalette(fillColor: deepGreen)
             }
         }
     }
@@ -887,8 +1263,20 @@ private struct ConfettiEmitterView: UIViewRepresentable {
 
 
 private extension HabitCompletionLogDTO {
-    func matches(dayKey: String) -> Bool {
-        date.hasPrefix(dayKey)
+    func matchesLocalDay(dayKey: String) -> Bool {
+        // Parse the date string and extract the date part using UTC formatter
+        guard let logDate = DailyHabitsView.parseDate(date) else {
+            #if DEBUG
+            print("      ⚠️ matchesLocalDay: Failed to parse '\(date)', using prefix match")
+            #endif
+            return date.hasPrefix(dayKey) // Fallback to simple prefix match
+        }
+        let logKey = DailyHabitsView.utcDayKeyFormatter.string(from: logDate)
+        let matches = logKey == dayKey
+        #if DEBUG
+        print("      🔍 matchesLocalDay: '\(date)' -> parsed: \(logDate) -> UTC key: '\(logKey)' vs dayKey: '\(dayKey)' = \(matches)")
+        #endif
+        return matches
     }
 }
 

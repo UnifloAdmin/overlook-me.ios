@@ -15,6 +15,7 @@ enum SideNavRoute: String, Hashable {
     case dailyHabits
     case checklists
     
+    case mySubscriptions
     case managePlan
 }
 
@@ -35,11 +36,13 @@ struct SideNavSection: Identifiable {
 
 let SIDE_NAV_SECTIONS: [SideNavSection] = [
     .init(
-        id: "home",
-        label: "Home",
+        id: "dashboards",
+        label: "Dashboards",
         color: Color(hex: "#ff7043"),
         items: [
-            .init(route: .homeDashboard, label: "Dashboard", systemImage: "rectangle.grid.2x2")
+            .init(route: .homeDashboard, label: "Home", systemImage: "house.circle.fill"),
+            .init(route: .financeDashboard, label: "Finance", systemImage: "banknote.fill"),
+            .init(route: .productivityDashboard, label: "Productivity", systemImage: "bolt.circle.fill")
         ]
     ),
     .init(
@@ -47,12 +50,10 @@ let SIDE_NAV_SECTIONS: [SideNavSection] = [
         label: "Finance",
         color: .green,
         items: [
-            .init(route: .financeDashboard, label: "Finance Dashboard", systemImage: "chart.line.uptrend.xyaxis"),
-            .init(route: .bankAccounts, label: "Bank Accounts", systemImage: "building.columns"),
-            .init(route: .transactions, label: "Transactions", systemImage: "arrow.left.arrow.right"),
-            .init(route: .budgets, label: "Budgets", systemImage: "wallet.bifold"),
-            .init(route: .insights, label: "Insights", systemImage: "sparkles"),
-            .init(route: .netWorth, label: "Net Worth", systemImage: "chart.line.uptrend.xyaxis.circle")
+            .init(route: .bankAccounts, label: "Bank Accounts", systemImage: "building.columns.fill"),
+            .init(route: .budgets, label: "Budgets", systemImage: "wallet.pass.fill"),
+            .init(route: .mySubscriptions, label: "Recurring Payments", systemImage: "arrow.clockwise.circle.fill"),
+            .init(route: .insights, label: "Insights", systemImage: "chart.bar.xaxis")
         ]
     ),
     .init(
@@ -60,10 +61,8 @@ let SIDE_NAV_SECTIONS: [SideNavSection] = [
         label: "Productivity",
         color: .blue,
         items: [
-            .init(route: .productivityDashboard, label: "Productivity Dashboard", systemImage: "square.grid.2x2"),
-            .init(route: .tasks, label: "Tasks", systemImage: "checklist"),
-            .init(route: .dailyHabits, label: "Daily Habits", systemImage: "checkmark.circle"),
-            .init(route: .checklists, label: "Checklists", systemImage: "list.bullet.rectangle")
+            .init(route: .tasks, label: "Tasks", systemImage: "square.and.pencil"),
+            .init(route: .dailyHabits, label: "Habit Tracker", systemImage: "repeat.circle.fill")
         ]
     ),
     .init(
@@ -71,7 +70,7 @@ let SIDE_NAV_SECTIONS: [SideNavSection] = [
         label: "Subscriptions",
         color: Color(hex: "#3949ab"),
         items: [
-            .init(route: .managePlan, label: "Manage Plan", systemImage: "crown")
+            .init(route: .managePlan, label: "Manage Plan", systemImage: "star.circle.fill")
         ]
     )
 ]

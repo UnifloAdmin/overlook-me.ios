@@ -10,6 +10,7 @@ import UIKit
 
 struct SideNavigationView: View {
     @Environment(\.injected) private var container: DIContainer
+    @Environment(\.dismiss) private var dismiss
     @Binding var isPresented: Bool
     let onSelectRoute: (SideNavRoute) -> Void
     
@@ -17,79 +18,104 @@ struct SideNavigationView: View {
     private var interactor: AuthInteractor { container.interactors.authInteractor }
     @Environment(\.openURL) private var openURL
     
+    private let columns = [
+        GridItem(.flexible(minimum: 60, maximum: 90), spacing: 12),
+        GridItem(.flexible(minimum: 60, maximum: 90), spacing: 12),
+        GridItem(.flexible(minimum: 60, maximum: 90), spacing: 12),
+        GridItem(.flexible(minimum: 60, maximum: 90), spacing: 12)
+    ]
+    
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(SIDE_NAV_SECTIONS) { section in
-                    Section {
-                        ForEach(section.items) { item in
-                            Button {
-                                // Call the callback to store pending route, then dismiss
-                                onSelectRoute(item.route)
-                                isPresented = false
-                            } label: {
-                                navRow(item: item, accent: section.color)
-                            }
-                            .buttonStyle(.plain)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
-                        }
-                    } header: {
-                        Text(section.label)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                            .textCase(nil)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Manually render each section
+                    ForEach(0..<SIDE_NAV_SECTIONS.count, id: \.self) { sectionIndex in
+                        sectionView(at: sectionIndex)
                     }
+                    
+                    // User auth at the bottom
+                    VStack(spacing: 16) {
+                        Divider()
+                            .padding(.horizontal, 20)
+                        
+                        HStack(spacing: 12) {
+                            userProfileRow
+                            Spacer()
+                            settingsIconButton
+                            logoutIconButton
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
                 }
+                .padding(.top, 8)
             }
-            .listStyle(.insetGrouped)
-            .listSectionSpacing(.compact)
-            .navigationTitle("Menu")
+            .navigationTitle("Navigate To")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .close) { close() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { bottomAccountArea }
         }
     }
     
-    private func navRow(item: SideNavItem, accent: Color) -> some View {
-        HStack(spacing: 12) {
+    private func sectionView(at index: Int) -> some View {
+        let section = SIDE_NAV_SECTIONS[index]
+        return VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            Text(section.label)
+                .font(.system(size: 20, weight: .semibold, design: .default))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 20)
+            
+            // Grid of items using index-based iteration
+            let itemsGrid = LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(0..<section.items.count, id: \.self) { itemIndex in
+                    let item = section.items[itemIndex]
+                    Button {
+                        onSelectRoute(item.route)
+                        isPresented = false
+                    } label: {
+                        moduleCard(item: item, accent: section.color)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
+            
+            itemsGrid
+        }
+    }
+    
+    private func moduleCard(item: SideNavItem, accent: Color) -> some View {
+        VStack(alignment: .center, spacing: 8) {
+            // Icon without background
             Image(systemName: item.systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 28, weight: .regular, design: .default))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(accent)
-                .frame(width: 20, height: 20)
+                .frame(width: 56, height: 56)
             
+            // Label with fixed height
             Text(item.label)
-                .font(.callout)
+                .font(.system(size: 14, weight: .medium, design: .default))
                 .foregroundStyle(.primary)
-            
-            Spacer()
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(height: 36)
+                .fixedSize(horizontal: false, vertical: false)
         }
-        .padding(.leading, 4)
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-    
-    private var bottomAccountArea: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                userProfileRow
-                Spacer(minLength: 12)
-                settingsIconButton
-                logoutIconButton
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .liquidGlassBackground()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .padding(.vertical, 6)
     }
     
     private var userProfileRow: some View {
@@ -101,27 +127,28 @@ struct SideNavigationView: View {
                     } placeholder: {
                         defaultAvatar
                     }
-                    .frame(width: 40, height: 40)
+                    .frame(width: 42, height: 42)
                     .clipShape(Circle())
                 } else {
                     defaultAvatar
-                        .frame(width: 40, height: 40)
+                        .frame(width: 42, height: 42)
                 }
                 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(user.name ?? user.email)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .font(.system(size: 16, weight: .medium, design: .default))
+                        .lineLimit(1)
                     
                     if user.name != nil {
                         Text(user.email)
-                            .font(.caption)
+                            .font(.system(size: 13, weight: .regular, design: .default))
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
             } else {
                 Text("Not signed in")
-                    .font(.subheadline)
+                    .font(.system(size: 16, weight: .medium, design: .default))
                     .foregroundStyle(.secondary)
             }
         }
@@ -130,9 +157,11 @@ struct SideNavigationView: View {
     private var logoutIconButton: some View {
         Button(action: logout) {
             Image(systemName: "rectangle.portrait.and.arrow.right")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 16, weight: .medium, design: .default))
                 .foregroundStyle(.red)
-                .frame(width: 36, height: 36)
+                .frame(width: 38, height: 38)
+                .background(Color.red.opacity(0.15))
+                .clipShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(state.auth.isLoading)
@@ -142,9 +171,11 @@ struct SideNavigationView: View {
     private var settingsIconButton: some View {
         Button(action: openAccountSettings) {
             Image(systemName: "gearshape.fill")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 16, weight: .medium, design: .default))
                 .foregroundStyle(Color.accentColor)
-                .frame(width: 36, height: 36)
+                .frame(width: 38, height: 38)
+                .background(Color.accentColor.opacity(0.15))
+                .clipShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Account Settings")
@@ -166,37 +197,6 @@ struct SideNavigationView: View {
     private func openAccountSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         openURL(url)
-    }
-    
-    private func close() {
-        isPresented = false
-    }
-}
-
-// MARK: - Styling
-
-private struct LiquidGlassBackgroundModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-                .glassEffect(.regular, in: .capsule)
-        } else {
-            content
-                .background {
-                    Capsule(style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
-                        )
-                }
-        }
-    }
-}
-
-private extension View {
-    func liquidGlassBackground() -> some View {
-        modifier(LiquidGlassBackgroundModifier())
     }
 }
 

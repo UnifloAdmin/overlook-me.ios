@@ -108,6 +108,10 @@ struct HomeView: View {
                 .tabBarConfig(.productivity)
                 .toolbar(.visible, for: .navigationBar)
             
+        case .mySubscriptions:
+            RecurringPaymentsView()
+                .tabBarConfig(.subscriptions)
+                .toolbar(.visible, for: .navigationBar)
         case .managePlan:
             ManagePlanView()
                 .tabBarConfig(.subscriptions)

@@ -57,13 +57,6 @@ struct HabitViewSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarBackButtonHidden(true)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Text(habit.name)
-                            .font(.headline)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Button("Edit") {
                             // Edit action
