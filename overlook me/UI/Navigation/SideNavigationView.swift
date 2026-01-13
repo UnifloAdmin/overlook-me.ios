@@ -24,10 +24,9 @@ struct SideNavigationView: View {
                     Section {
                         ForEach(section.items) { item in
                             Button {
+                                // Call the callback to store pending route, then dismiss
+                                onSelectRoute(item.route)
                                 isPresented = false
-                                DispatchQueue.main.async {
-                                    onSelectRoute(item.route)
-                                }
                             } label: {
                                 navRow(item: item, accent: section.color)
                             }

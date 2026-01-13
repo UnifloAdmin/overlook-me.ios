@@ -45,8 +45,11 @@ struct RealHabitsRepository: HabitsRepository {
     
     private static var defaultDateFormatter: DateFormatter {
         let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .iso8601)
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        // Use the user's local day when querying `GET /dailyhabits?date=...`.
+        // Using UTC here can shift the day for positive offsets (e.g. IST) and cause
+        // the UI to think "today" has no logs even when it does.
+        formatter.calendar = .current
+        formatter.timeZone = .current
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter

@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(QuartzCore)
+import QuartzCore
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -13,6 +16,9 @@ struct DailyHabitsView: View {
     @State private var lastLoadedSignature: String?
     @State private var displayedHabits: [DailyHabitDTO] = []
     @State private var selectedHabitForDetail: DailyHabitDTO?
+    @State private var selectedHabitForNotification: DailyHabitDTO?
+    @State private var selectedHabitForPomodoro: DailyHabitDTO?
+    @State private var notificationUpdateTrigger = UUID()
     @State private var localCompletions: [String: HabitCompletionLogDTO] = [:]
     @State private var actionErrorMessage: String?
     @State private var pendingHabitId: String?
@@ -34,46 +40,28 @@ struct DailyHabitsView: View {
     }()
     
     var body: some View {
-        GeometryReader { proxy in
-            content(topInset: proxy.safeAreaInsets.top, size: proxy.size)
-        }
-        .task { await loadHabitsIfNeeded(force: true) }
-        .onChange(of: backendUserId) { _ in
-            localCompletions = [:]
-            Task { await loadHabitsIfNeeded(force: true) }
-        }
-        .onChange(of: selectedDate) { _ in
-            localCompletions = [:]
-            Task { await loadHabitsIfNeeded(force: true) }
-        }
-        .alert("Unable to update habit", isPresented: Binding(
-            get: { actionErrorMessage != nil },
-            set: { newValue in if !newValue { actionErrorMessage = nil } })
-        ) {
-            Button("OK", role: .cancel) { actionErrorMessage = nil }
-        } message: {
-            Text(actionErrorMessage ?? "")
-        }
-    }
-    
-    private func content(topInset: CGFloat, size: CGSize) -> some View {
-        let headerHeight = headerHeight(for: size)
-        let overlayHeight = headerHeight * 0.35
-        return ZStack(alignment: .top) {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            gradientLayer(headerHeight: headerHeight, overlayHeight: overlayHeight)
+        ZStack(alignment: .top) {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
             
-            ScrollView(showsIndicators: false) {
+            gradientLayer
+            
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
                     headerPlaceholder
                     habitsSection
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
-                .padding(.top, contentTopPadding(topInset: topInset, headerHeight: headerHeight))
+                .padding(.top, 125)  // Manual padding: status bar (~47) + nav bar (~44) + spacing (24)
                 .padding(.bottom, 48)
+                .safeAreaPadding(.top, 0)
             }
+            // Ensure bounce is only enabled when there's actual scrollable content.
+            .scrollBounceBehavior(.basedOnSize, axes: [.vertical, .horizontal])
             .refreshable { await loadHabitsIfNeeded(force: true) }
         }
+        .ignoresSafeArea(edges: .top)
         .navigationTitle("Daily Habits")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -99,7 +87,7 @@ struct DailyHabitsView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $selectedHabitForDetail) { habit in
-            HabitDetailSheetView(
+            HabitViewSheet(
                 habit: habit,
                 completion: completionLog(for: habit),
                 isPerformingAction: pendingHabitId == habit.id,
@@ -108,19 +96,37 @@ struct DailyHabitsView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(item: $selectedHabitForNotification, onDismiss: {
+            notificationUpdateTrigger = UUID()
+        }) { habit in
+            HabitNotification(habit: habit)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedHabitForPomodoro) { habit in
+            PomodoroSheet(habit: habit)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+        .task { await loadHabitsIfNeeded(force: true) }
+        .onChange(of: backendUserId) { _ in
+            localCompletions = [:]
+            Task { await loadHabitsIfNeeded(force: true) }
+        }
+        .onChange(of: selectedDate) { _ in
+            localCompletions = [:]
+            Task { await loadHabitsIfNeeded(force: true) }
+        }
+        .alert("Unable to update habit", isPresented: Binding(
+            get: { actionErrorMessage != nil },
+            set: { newValue in if !newValue { actionErrorMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
     
-    private func headerHeight(for size: CGSize) -> CGFloat {
-        max(size.height * 0.4, 220)
-    }
-    
-    private func contentTopPadding(topInset: CGFloat, headerHeight: CGFloat) -> CGFloat {
-        let desiredOverlap = headerHeight * 0.32
-        let rawPadding = topInset - desiredOverlap
-        let minimumPadding = -headerHeight * 0.25
-        let maximumPadding: CGFloat = 40
-        return min(max(rawPadding, minimumPadding), maximumPadding)
-    }
     
     private var headerPlaceholder: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -163,7 +169,10 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
                         completion: completionLog(for: habit),
                         isPerformingAction: pendingHabitId == habit.id,
                         onAction: handleHabitAction,
-                        onSelect: { selectedHabitForDetail = $0 }
+                        onNotification: { selectedHabitForNotification = $0 },
+                        onPomodoro: { selectedHabitForPomodoro = $0 },
+                        onSelect: { selectedHabitForDetail = $0 },
+                        notificationUpdateTrigger: notificationUpdateTrigger
                     )
                 }
             }
@@ -369,7 +378,7 @@ private extension DailyHabitsView {
     static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .iso8601)
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0) 
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
@@ -387,15 +396,15 @@ private extension DailyHabitsView {
 
 private extension DailyHabitsView {
     @ViewBuilder
-    func gradientLayer(headerHeight: CGFloat, overlayHeight: CGFloat) -> some View {
+    private var gradientLayer: some View {
         VStack(spacing: 0) {
             DailyHabitsPalette.headerGradient(for: colorScheme)
-                .frame(height: headerHeight)
+                .frame(height: 280)
                 .overlay(DailyHabitsPalette.highlightGradient(for: colorScheme))
                 .overlay(DailyHabitsPalette.glossOverlay(for: colorScheme))
                 .overlay(alignment: .bottom) {
                     DailyHabitsPalette.fadeOverlay(for: colorScheme)
-                        .frame(height: overlayHeight)
+                        .frame(height: 98)
                 }
                 .frame(maxWidth: .infinity)
             Spacer()
@@ -403,6 +412,10 @@ private extension DailyHabitsView {
         .allowsHitTesting(false)
         .ignoresSafeArea()
     }
+    
+    // MARK: - Removed unused functions
+    // Removed: content(topInset:size:), headerHeight(for:), contentTopPadding(topInset:headerHeight:)
+    // These were causing GeometryReader-based layout recalculations
 }
 
 // MARK: - Supporting Views
@@ -413,22 +426,33 @@ private struct HabitCardView: View {
     let completion: HabitCompletionLogDTO?
     let isPerformingAction: Bool
     let onAction: (HabitAction) -> Void
+    let onNotification: (DailyHabitDTO) -> Void
+    let onPomodoro: (DailyHabitDTO) -> Void
     let onSelect: (DailyHabitDTO) -> Void
+    let notificationUpdateTrigger: UUID
     let extraContent: AnyView?
+    @State private var celebrationTrigger = 0
+    @State private var notificationCount: Int = 0
     
     init(
         habit: DailyHabitDTO,
         completion: HabitCompletionLogDTO?,
         isPerformingAction: Bool,
         onAction: @escaping (HabitAction) -> Void,
+        onNotification: @escaping (DailyHabitDTO) -> Void,
+        onPomodoro: @escaping (DailyHabitDTO) -> Void,
         onSelect: @escaping (DailyHabitDTO) -> Void,
+        notificationUpdateTrigger: UUID = UUID(),
         extraContent: AnyView? = nil
     ) {
         self.habit = habit
         self.completion = completion
         self.isPerformingAction = isPerformingAction
         self.onAction = onAction
+        self.onNotification = onNotification
+        self.onPomodoro = onPomodoro
         self.onSelect = onSelect
+        self.notificationUpdateTrigger = notificationUpdateTrigger
         self.extraContent = extraContent
     }
     
@@ -440,37 +464,44 @@ private struct HabitCardView: View {
     private var isActionDisabled: Bool { isPerformingAction || completion != nil }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             headerRow
+            
+            Divider()
+                .opacity(0.5)
+            
             metaRow
+            
+            Divider()
+                .opacity(0.5)
+            
             actionRow
             
             if let extraContent {
                 Divider()
-                    .background(Color.white.opacity(colorScheme == .dark ? 0.05 : 0.08))
+                    .opacity(0.5)
                 extraContent
             }
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(DailyHabitsPalette.cardBackground(for: colorScheme))
-                .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 12, y: 8)
-        )
+        .background(DailyHabitsPalette.cardBackground(for: colorScheme))
+        .cornerRadius(16)
+        .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 8, y: 4)
         .onTapGesture { onSelect(habit) }
     }
     
     private var headerRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(habit.name)
                 .font(.title3.weight(.bold))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(1)
+                .lineLimit(2)
                 .truncationMode(.tail)
             if let description = habit.description, !description.isEmpty {
                 Text(description)
-                    .font(.footnote)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -480,10 +511,105 @@ private struct HabitCardView: View {
     
     private var metaRow: some View {
         HStack(spacing: 8) {
-            habitTypeBadge
-            priorityChip
-            cadenceChip
+            Image(systemName: isPositiveHabit ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                .font(.caption)
+                .foregroundStyle(isPositiveHabit ? .green : .red)
+            
+            Text(isPositiveHabit ? "Build" : "Break")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            
+            if let priority = priorityLabel {
+                Text("•")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                
+                priorityIcon(for: priority)
+                
+                Text(priority)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            
+            Text("•")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            
+            Text(frequencyLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            
             Spacer(minLength: 0)
+            
+            // Pomodoro timer button
+            Button {
+                onPomodoro(habit)
+            } label: {
+                Image(systemName: "timer")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(8)
+                    .background(Color(uiColor: .secondarySystemFill))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Start Pomodoro timer")
+            
+            // Notification button
+            Button {
+                onNotification(habit)
+            } label: {
+                ZStack {
+                    Image(systemName: "bell")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(8)
+                        .background(Color(uiColor: .secondarySystemFill))
+                        .clipShape(Circle())
+                    
+                    if notificationCount > 0 {
+                        Text("\(notificationCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 16, height: 16)
+                            .background(Color.red)
+                            .clipShape(Circle())
+                            .offset(x: 10, y: -10)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Habit notifications")
+            .onAppear { updateNotificationCount() }
+            .onChange(of: notificationUpdateTrigger) { _ in updateNotificationCount() }
+        }
+    }
+    
+    private func updateNotificationCount() {
+        if let saved = UserDefaults.standard.array(forKey: "notifications_\(habit.id)") as? [Date] {
+            notificationCount = saved.count
+        } else {
+            notificationCount = 0
+        }
+    }
+    
+    @ViewBuilder
+    private func priorityIcon(for priority: String) -> some View {
+        switch priority.lowercased() {
+        case "high":
+            Image(systemName: "exclamationmark")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.red)
+        case "medium":
+            Image(systemName: "chevron.up.2")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+        case "low":
+            Image(systemName: "chevron.up")
+                .font(.caption)
+                .foregroundStyle(.blue)
+        default:
+            EmptyView()
         }
     }
     
@@ -492,7 +618,7 @@ private struct HabitCardView: View {
         if let completion {
             completionStatusButton(for: completion)
         } else if isPositiveHabit {
-            VStack(spacing: 12) {
+            HStack(spacing: 12) {
                 primaryActionButton(
                     title: "Check In",
                     systemIcon: "checkmark.circle.fill",
@@ -532,22 +658,29 @@ private struct HabitCardView: View {
     ) -> some View {
         let palette = style.palette(for: colorScheme)
         return Button {
+            if !isActionDisabled {
+                celebrationTrigger &+= 1
+            }
             onAction(action)
         } label: {
             Label(title, systemImage: systemIcon)
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
-                .background(
-                    Capsule().fill(palette.fillColor)
-                )
+                .background(palette.fillColor)
                 .foregroundStyle(Color.white)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(isActionDisabled)
         .opacity(isActionDisabled ? 0.6 : 1)
+        .overlay(alignment: .top) {
+            ConfettiEmitterView(trigger: celebrationTrigger)
+                .frame(height: 140)
+                .offset(y: -16)
+                .allowsHitTesting(false)
+        }
     }
     
     private func secondaryActionButton(
@@ -556,21 +689,19 @@ private struct HabitCardView: View {
         tint: Color,
         action: HabitAction
     ) -> some View {
-        let fill = tint.opacity(colorScheme == .dark ? 0.35 : 0.15)
-        let foreground = colorScheme == .dark ? .white : tint
+        let fill = Color(uiColor: .secondarySystemFill)
+        let foreground = Color.secondary
         return Button {
             onAction(action)
         } label: {
             Label(title, systemImage: systemIcon)
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
-                .background(
-                    Capsule().fill(fill)
-                )
+                .background(fill)
                 .foregroundStyle(foreground)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(isActionDisabled)
@@ -649,205 +780,111 @@ private struct HabitCardView: View {
         }
     }
 
-    private var habitTypeBadge: some View {
-        let fill = (isPositiveHabit ? Color.green : Color.red)
-            .opacity(colorScheme == .dark ? 0.7 : 0.92)
-        return Label(isPositiveHabit ? "Build Habit" : "Break Habit",
-                     systemImage: isPositiveHabit ? "hammer.fill" : "scissors")
-        .font(.caption2.weight(.bold))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .foregroundStyle(Color.white)
-        .lineLimit(1)
-        .minimumScaleFactor(0.85)
-        .background(
-            Capsule()
-                .fill(fill)
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(colorScheme == .dark ? 0.15 : 0.2), lineWidth: 0.5)
-                )
-        )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.15), radius: 6, y: 3)
-    }
-    
-    private var priorityChip: some View {
-        let hasPriority = priorityLabel != nil
-        let label = hasPriority ? priorityLabel! : "Not set"
-        let (fill, textColor) = priorityStyle(for: label)
-        return Text(label.uppercased())
-            .font(.caption2.weight(.heavy))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(fill)
-            )
-            .foregroundStyle(textColor)
-            .overlay(
-                Capsule()
-                    .stroke(textColor.opacity(0.25), lineWidth: 0.5)
-            )
-    }
-    
-    private var cadenceChip: some View {
-        Label {
-            Text("Cadence \(frequencyLabel)")
-        } icon: {
-            Image(systemName: "metronome.fill")
-        }
-        .font(.caption2.weight(.semibold))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .lineLimit(1)
-        .minimumScaleFactor(0.85)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.blue.opacity(colorScheme == .dark ? 0.45 : 0.2))
-        )
-        .foregroundStyle(colorScheme == .dark ? Color.white : Color.blue)
-    }
-    
-    private func priorityStyle(for label: String) -> (fill: Color, text: Color) {
-        switch label.lowercased() {
-        case "high":
-            return (
-                Color.red.opacity(colorScheme == .dark ? 0.4 : 0.2),
-                Color.red
-            )
-        case "medium":
-            return (
-                Color.yellow.opacity(colorScheme == .dark ? 0.4 : 0.25),
-                Color.yellow.darker(for: colorScheme)
-            )
-        case "low":
-            return (
-                Color.blue.opacity(colorScheme == .dark ? 0.35 : 0.2),
-                Color.blue
-            )
-        default:
-            return (
-                Color.gray.opacity(0.15),
-                Color.secondary
-            )
-        }
-    }
 }
 
-private struct HabitDetailSheetView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
-    let habit: DailyHabitDTO
-    let completion: HabitCompletionLogDTO?
-    let isPerformingAction: Bool
-    let onAction: (HabitAction) -> Void
+// MARK: - Celebration Effect
+
+private struct ConfettiEmitterView: UIViewRepresentable {
+    let trigger: Int
     
-    private var frequencyLabel: String {
-        (habit.frequency ?? "daily").replacingOccurrences(of: "_", with: " ").capitalized
+    func makeUIView(context: Context) -> ConfettiHostView {
+        ConfettiHostView()
     }
     
-    private var detailMetrics: [(title: String, value: String)] {
-        [
-            ("Frequency", frequencyLabel),
-            ("Priority", habit.priority?.capitalized ?? "Not set")
+    func updateUIView(_ uiView: ConfettiHostView, context: Context) {
+        guard context.coordinator.lastTrigger != trigger else { return }
+        context.coordinator.lastTrigger = trigger
+        uiView.emitOnce()
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    final class Coordinator {
+        var lastTrigger: Int = 0
+    }
+    
+    final class ConfettiHostView: UIView {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            backgroundColor = .clear
+        }
+        
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+        
+        func emitOnce() {
+            guard bounds.width > 0 else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.emitOnce()
+                }
+                return
+            }
+            
+            layer.sublayers?
+                .filter { $0.name == "habit-confetti-layer" }
+                .forEach { $0.removeFromSuperlayer() }
+            
+            let emitter = CAEmitterLayer()
+            emitter.name = "habit-confetti-layer"
+            emitter.emitterShape = .line
+            emitter.emitterMode = .surface
+            emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.maxY)
+            emitter.emitterSize = CGSize(width: bounds.width, height: 1)
+            emitter.beginTime = CACurrentMediaTime()
+            emitter.birthRate = 1
+            
+            emitter.emitterCells = ConfettiEmitterView.makeCells()
+            layer.addSublayer(emitter)
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                emitter.birthRate = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                emitter.removeFromSuperlayer()
+            }
+        }
+    }
+    
+    private static func makeCells() -> [CAEmitterCell] {
+        let colors: [UIColor] = [
+            .systemGreen, .systemBlue, .systemPink, .systemYellow,
+            .systemOrange, .systemPurple, .systemTeal
         ]
-    }
-    
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    HabitCardView(
-                        habit: habit,
-                        completion: completion,
-                        isPerformingAction: isPerformingAction,
-                        onAction: onAction,
-                        onSelect: { _ in }
-                    )
-                    trackerSection(for: habit)
-                    metricsSection
-                }
-                .padding(.top, 32)
-                .padding(.bottom, 48)
-            }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("Habit Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .font(.body.weight(.semibold))
-                }
-            }
+        return colors.flatMap { color -> [CAEmitterCell] in
+            let square = baseCell(color: color)
+            square.scale = 0.07
+            square.scaleRange = 0.02
+            
+            let rectangle = baseCell(color: color)
+            rectangle.scale = 0.08
+            rectangle.scaleRange = 0.03
+            rectangle.contents = UIImage(systemName: "rectangle.fill")?.cgImage
+            
+            return [square, rectangle]
         }
     }
     
-    private var metricsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Snapshot")
-                .font(.headline)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(detailMetrics, id: \.title) { metric in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(metric.title.uppercased())
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
-                        Text(metric.value)
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemBackground))
-                    )
-                }
-            }
-        }
-        .padding(.horizontal, 20)
-    }
-    
-    @ViewBuilder
-    private func trackerSection(for habit: DailyHabitDTO) -> some View {
-        if let logs = habit.completionLogs, !logs.isEmpty {
-            HabitCycleTracker(logs: logs)
-                .padding(.vertical, 18)
-                .padding(.horizontal, 20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(DailyHabitsPalette.cardBackground(for: colorScheme))
-                        .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 12, y: 8)
-                )
-                .padding(.horizontal, 20)
-        }
+    private static func baseCell(color: UIColor) -> CAEmitterCell {
+        let cell = CAEmitterCell()
+        cell.contents = UIImage(systemName: "circle.fill")?.cgImage
+        cell.birthRate = 32
+        cell.lifetime = 2.5
+        cell.velocity = 220
+        cell.velocityRange = 60
+        cell.emissionLongitude = .pi / 2
+        cell.emissionRange = .pi / 4
+        cell.spin = 3.5
+        cell.spinRange = 2
+        cell.yAcceleration = 320
+        cell.color = color.cgColor
+        return cell
     }
 }
 
-private struct WeekRhythmIndicator: View {
-    let selectedDays: Set<HabitWeekday>
-    let isPositive: Bool
-    
-    var body: some View {
-        HStack(spacing: 6) {
-            Text("Week rhythm")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            ForEach(HabitWeekday.displayOrder) { day in
-                Circle()
-                    .fill(color(for: day))
-                    .frame(width: 8, height: 8)
-            }
-        }
-    }
-    
-    private func color(for day: HabitWeekday) -> Color {
-        guard !selectedDays.isEmpty else {
-            return (isPositive ? Color.green : Color.red).opacity(0.25)
-        }
-        return selectedDays.contains(day) ? (isPositive ? .green : .red) : Color.gray.opacity(0.25)
-    }
-}
+
 
 private extension HabitCompletionLogDTO {
     func matches(dayKey: String) -> Bool {
@@ -855,75 +892,6 @@ private extension HabitCompletionLogDTO {
     }
 }
 
-private enum HabitAction {
-    case checkIn(DailyHabitDTO)
-    case skipDay(DailyHabitDTO)
-    case resisted(DailyHabitDTO)
-    case failedToResist(DailyHabitDTO)
-    
-    var habit: DailyHabitDTO {
-        switch self {
-        case .checkIn(let habit),
-             .skipDay(let habit),
-             .resisted(let habit),
-             .failedToResist(let habit):
-            return habit
-        }
-    }
-    
-    func makeRequest(selectedDate: Date, isoFormatter: ISO8601DateFormatter) -> LogHabitCompletionRequestDTO {
-        let dayStart = Calendar.current.startOfDay(for: selectedDate)
-        let dateString = isoFormatter.string(from: dayStart)
-        let completedAt = isoFormatter.string(from: Date())
-        
-        let payload: (Bool, Bool) = {
-            switch self {
-            case .checkIn:
-                return (true, false)
-            case .skipDay:
-                return (false, true)
-            case .resisted:
-                return (true, false)
-            case .failedToResist:
-                return (false, false)
-            }
-        }()
-        
-        let reason: CompletionReasonDTO? = {
-            switch self {
-            case .skipDay:
-                return CompletionReasonDTO(
-                    reasonType: "skip",
-                    reasonText: "Skipped from iOS",
-                    triggerCategory: "manual",
-                    sentiment: nil
-                )
-            case .failedToResist:
-                return CompletionReasonDTO(
-                    reasonType: "failure",
-                    reasonText: "Marked as failed from iOS",
-                    triggerCategory: "manual",
-                    sentiment: nil
-                )
-            default:
-                return nil
-            }
-        }()
-        
-        return LogHabitCompletionRequestDTO(
-            habitId: habit.id,
-            date: dateString,
-            completed: payload.0,
-            value: nil,
-            notes: nil,
-            wasSkipped: payload.1,
-            completedAt: completedAt,
-            metrics: [],
-            reason: reason,
-            generalNotes: nil
-        )
-    }
-}
 
 // MARK: - Palette
 

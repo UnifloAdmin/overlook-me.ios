@@ -136,6 +136,22 @@ struct HabitCompletionLogDTO: Codable, Sendable {
     let wasSkipped: Bool?
 }
 
+/// Full log entry returned by `GET /dailyhabits/{habitId}/logs`.
+struct HabitCompletionLogEntryDTO: Codable, Sendable, Identifiable {
+    let id: String
+    let habitId: String
+    let habitName: String?
+    let date: String
+    let completed: Bool
+    let wasSkipped: Bool?
+    let generalNotes: String?
+    let metrics: [EffortMetricDTO]?
+    let reason: CompletionReasonDTO?
+    let completedAt: String?
+    let createdAt: String?
+    let updatedAt: String?
+}
+
 struct CheckInHabitRequestDTO: Codable, Sendable {
     let value: Double?
     let notes: String?
@@ -305,7 +321,7 @@ extension DailyHabitsAPI {
         endDate: String? = nil,
         page: Int? = nil,
         pageSize: Int? = nil
-    ) async throws -> JSONValue {
+    ) async throws -> [HabitCompletionLogEntryDTO] {
         try await client.request(
             .get,
             path: "dailyhabits/\(habitId)/logs",
@@ -323,7 +339,7 @@ extension DailyHabitsAPI {
     }
 
     /// GET `/dailyhabits/{habitId}/logs/{date}`
-    func getCompletionLogByDate(habitId: String, date: String, userId: String, oauthId: String? = nil) async throws -> JSONValue {
+    func getCompletionLogByDate(habitId: String, date: String, userId: String, oauthId: String? = nil) async throws -> HabitCompletionLogEntryDTO {
         try await client.request(
             .get,
             path: "dailyhabits/\(habitId)/logs/\(date)",

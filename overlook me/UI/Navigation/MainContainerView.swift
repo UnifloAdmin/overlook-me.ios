@@ -11,6 +11,7 @@ struct MainContainerView: View {
     @StateObject private var tabBar = TabBarStyleStore()
     @State private var selection: AppTab = .home
     @State private var showingSideNav = false
+    @State private var pendingNavigation: SideNavRoute?
     
     // Keep navigation *inside* tabs so the tab bar stays visible.
     @State private var homePath = NavigationPath()
@@ -56,15 +57,34 @@ struct MainContainerView: View {
             }
         }
         .tabBarMinimizeBehavior(.never)
-        .sheet(isPresented: $showingSideNav) {
+        .sheet(isPresented: $showingSideNav, onDismiss: {
+            // Execute pending navigation after sheet is fully dismissed
+            print("📋 Sheet dismissed. Pending navigation: \(String(describing: pendingNavigation))")
+            
+            guard let pendingRoute = pendingNavigation else {
+                print("⚠️ No pending navigation, sheet was just closed")
+                return
+            }
+            
+            pendingNavigation = nil
+            
+            // Give the sheet animation time to fully complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                print("🚀 Executing navigation to: \(pendingRoute)")
+                open(pendingRoute)
+            }
+        }) {
             SideNavigationView(
                 isPresented: $showingSideNav,
                 onSelectRoute: { route in
-                    open(route)
+                    // Store the route - navigation will happen in onDismiss
+                    print("✅ Route selected in callback: \(route)")
+                    pendingNavigation = route
                 }
             )
         }
         .onChange(of: selection) { oldValue, newValue in
+            print("🔀 Selection changed: \(oldValue) → \(newValue)")
             if newValue == .searchProxy {
                 showingSideNav = true
                 selection = oldValue == .searchProxy ? .home : oldValue
@@ -76,11 +96,19 @@ struct MainContainerView: View {
             }
         }
         .onChange(of: tabBar.config) { oldValue, newValue in
+            // Prevent redundant updates if config hasn't actually changed
+            guard oldValue != newValue else { return }
+            
+            print("⚙️ TabBar config changed: \(oldValue) → \(newValue)")
+            
+            // Clear navigation path when entering dailyHabits mode
             if newValue == .dailyHabits {
                 homePath = NavigationPath()
             }
             
+            // Clear path when leaving dailyHabits mode
             if oldValue == .dailyHabits && newValue != .dailyHabits {
+                homePath = NavigationPath()
                 selection = .home
             }
             
@@ -91,21 +119,66 @@ struct MainContainerView: View {
     }
     
     private func open(_ route: SideNavRoute) {
-        // All routes start on the Home tab.
-        selection = .home
+        print("🔄 open() called with route: \(route)")
         
         if route == .dailyHabits {
             // Switch the entire experience into the dedicated Daily Habits tab
-            // instead of stacking another instance that immediately gets popped.
+            print("📱 Switching to Daily Habits mode")
+            
+            // Batch all state changes together to avoid multiple updates per frame
+            let needsConfigChange = tabBar.config != .dailyHabits
+            
+            // Clear path first
             homePath = NavigationPath()
-            if tabBar.config != .dailyHabits {
-                tabBar.config = .dailyHabits
+            
+            // Then set selection if needed
+            if selection != .home {
+                selection = .home
+            }
+            
+            // Finally update config if needed with a slight delay to avoid same-frame updates
+            if needsConfigChange {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
+                    transaction.disablesAnimations = false
+                    withTransaction(transaction) {
+                        self.tabBar.config = .dailyHabits
+                    }
+                }
             }
             return
         }
         
-        DispatchQueue.main.async {
-            homePath.append(route)
+        print("📱 Navigating to: \(route)")
+        
+        // For other routes, ensure we're in default mode and coordinate navigation
+        let needsConfigReset = tabBar.config == .dailyHabits
+        
+        if needsConfigReset {
+            // Reset from dailyHabits mode
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                var transaction = Transaction(animation: .easeInOut(duration: 0.35))
+                transaction.disablesAnimations = false
+                withTransaction(transaction) {
+                    self.tabBar.config = .default
+                    self.selection = .home
+                }
+                
+                // Add route to path after config change settles
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    self.homePath.append(route)
+                }
+            }
+        } else {
+            // Normal navigation
+            if selection != .home {
+                selection = .home
+            }
+            
+            // Small delay to ensure tab selection completes before navigation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self.homePath.append(route)
+            }
         }
     }
     

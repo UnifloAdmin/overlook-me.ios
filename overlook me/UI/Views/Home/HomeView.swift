@@ -17,6 +17,7 @@ struct HomeView: View {
                     destination(for: route)
                 }
         }
+        .toolbar(.hidden, for: .navigationBar)
     }
     
     @ViewBuilder
@@ -24,22 +25,37 @@ struct HomeView: View {
         if tabBar.config == .dailyHabits {
             DailyHabitsView()
                 .tabBarConfig(.dailyHabits)
+                .toolbar(.visible, for: .navigationBar)
+                .id("dailyHabits")
         } else {
             landingView
                 .tabBarConfig(.default)
+                .toolbar(.hidden, for: .navigationBar)
+                .id("landing")
         }
     }
     
     private var landingView: some View {
-        TimeOfDayGreetingContainer(onArrowTap: {
-            isDetentSheetPresented = true
-        })
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(24)
-            .background(Color(.systemBackground))
-            .sheet(isPresented: $isDetentSheetPresented) {
-                DetentBottomSheetView()
+        ZStack {
+            Color(.systemBackground)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                TimeOfDayGreetingContainer(onArrowTap: {
+                    isDetentSheetPresented = true
+                })
+                
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 70)  // Manual padding: status bar (~47) + spacing (23)
+            .padding(.bottom, 24)
+            .safeAreaPadding(.top, 0)
+        }
+        .ignoresSafeArea(edges: .top)
+        .sheet(isPresented: $isDetentSheetPresented) {
+            DetentBottomSheetView()
+        }
     }
     
     @ViewBuilder
@@ -48,42 +64,54 @@ struct HomeView: View {
         case .homeDashboard:
             landingView
                 .tabBarConfig(.default)
+                .toolbar(.hidden, for: .navigationBar)
             
         case .financeDashboard:
             FinanceDashboardView()
                 .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
         case .bankAccounts:
             BankAccountsView()
                 .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
         case .transactions:
             TransactionsView()
                 .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
         case .budgets:
             BudgetsView()
                 .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
         case .insights:
             InsightsView()
                 .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
         case .netWorth:
             NetWorthView()
                 .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
             
         case .productivityDashboard:
             ProductivityDashboardView()
                 .tabBarConfig(.productivity)
+                .toolbar(.visible, for: .navigationBar)
         case .tasks:
             TasksView()
                 .tabBarConfig(.productivity)
+                .toolbar(.visible, for: .navigationBar)
         case .dailyHabits:
-            DailyHabitsView()
-                .tabBarConfig(.dailyHabits)
+            // Note: dailyHabits is handled via tabBar.config switch in MainContainerView
+            // This destination should not be reached, but kept for safety
+            EmptyView()
         case .checklists:
             ChecklistsView()
                 .tabBarConfig(.productivity)
+                .toolbar(.visible, for: .navigationBar)
             
         case .managePlan:
             ManagePlanView()
                 .tabBarConfig(.subscriptions)
+                .toolbar(.visible, for: .navigationBar)
         }
     }
 }
@@ -166,7 +194,7 @@ private struct DetentBottomSheetView: View {
                         WeatherOverviewTile(
                             snapshot: weatherModel.snapshot,
                             onRefresh: { weatherModel.refresh() },
-                            onTroubleshoot: { weatherModel.debugRunFixedFetch() }
+                            onTroubleshoot: { }
                         )
                         .frame(maxWidth: 360)
                         
