@@ -101,13 +101,13 @@ struct MainContainerView: View {
             
             print("⚙️ TabBar config changed: \(oldValue) → \(newValue)")
             
-            // Clear navigation path when entering dailyHabits mode
-            if newValue == .dailyHabits {
+            // Clear navigation path when entering dailyHabits or tasks mode
+            if newValue == .dailyHabits || newValue == .tasks {
                 homePath = NavigationPath()
             }
             
-            // Clear path when leaving dailyHabits mode
-            if oldValue == .dailyHabits && newValue != .dailyHabits {
+            // Clear path when leaving dailyHabits or tasks mode
+            if (oldValue == .dailyHabits || oldValue == .tasks) && newValue != oldValue {
                 homePath = NavigationPath()
                 selection = .home
             }
@@ -149,13 +149,41 @@ struct MainContainerView: View {
             return
         }
         
+        if route == .tasks {
+            // Switch the entire experience into the dedicated Tasks tab
+            print("📱 Switching to Tasks mode")
+            
+            // Batch all state changes together to avoid multiple updates per frame
+            let needsConfigChange = tabBar.config != .tasks
+            
+            // Clear path first
+            homePath = NavigationPath()
+            
+            // Then set selection if needed
+            if selection != .home {
+                selection = .home
+            }
+            
+            // Finally update config if needed with a slight delay to avoid same-frame updates
+            if needsConfigChange {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
+                    transaction.disablesAnimations = false
+                    withTransaction(transaction) {
+                        self.tabBar.config = .tasks
+                    }
+                }
+            }
+            return
+        }
+        
         print("📱 Navigating to: \(route)")
         
         // For other routes, ensure we're in default mode and coordinate navigation
-        let needsConfigReset = tabBar.config == .dailyHabits
+        let needsConfigReset = tabBar.config == .dailyHabits || tabBar.config == .tasks
         
         if needsConfigReset {
-            // Reset from dailyHabits mode
+            // Reset from dailyHabits or tasks mode
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 var transaction = Transaction(animation: .easeInOut(duration: 0.35))
                 transaction.disablesAnimations = false
@@ -194,6 +222,11 @@ struct MainContainerView: View {
                 ChallengesTabView()
                     .tabBarConfig(.dailyHabits)
             }
+        } else if tabBar.config == .tasks {
+            NavigationStack {
+                TaskBacklogsView()
+                    .tabBarConfig(.tasks)
+            }
         } else {
             NavigationStack {
                 FocusView()
@@ -208,6 +241,11 @@ struct MainContainerView: View {
             NavigationStack {
                 AnalyticsTabView()
                     .tabBarConfig(.dailyHabits)
+            }
+        } else if tabBar.config == .tasks {
+            NavigationStack {
+                TaskAnalyticsView()
+                    .tabBarConfig(.tasks)
             }
         } else {
             NavigationStack {

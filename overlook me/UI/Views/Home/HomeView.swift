@@ -27,6 +27,11 @@ struct HomeView: View {
                 .tabBarConfig(.dailyHabits)
                 .toolbar(.visible, for: .navigationBar)
                 .id("dailyHabits")
+        } else if tabBar.config == .tasks {
+            TaskDashboard()
+                .tabBarConfig(.tasks)
+                .toolbar(.visible, for: .navigationBar)
+                .id("tasks")
         } else {
             landingView
                 .tabBarConfig(.default)
@@ -96,17 +101,13 @@ struct HomeView: View {
                 .tabBarConfig(.productivity)
                 .toolbar(.visible, for: .navigationBar)
         case .tasks:
-            TasksView()
-                .tabBarConfig(.productivity)
-                .toolbar(.visible, for: .navigationBar)
+            // Note: tasks is handled via tabBar.config switch in MainContainerView
+            // This destination should not be reached, but kept for safety
+            EmptyView()
         case .dailyHabits:
             // Note: dailyHabits is handled via tabBar.config switch in MainContainerView
             // This destination should not be reached, but kept for safety
             EmptyView()
-        case .checklists:
-            ChecklistsView()
-                .tabBarConfig(.productivity)
-                .toolbar(.visible, for: .navigationBar)
             
         case .mySubscriptions:
             RecurringPaymentsView()
@@ -607,7 +608,7 @@ private final class WeatherTileViewModel: NSObject, ObservableObject {
         print("   Timestamp: \(location.timestamp)")
         #endif
         
-        Task {
+_Concurrency.Task {
             await fetchWeather(for: location)
         }
     }

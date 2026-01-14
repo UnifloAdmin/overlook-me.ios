@@ -30,10 +30,13 @@ extension AppEnvironment {
         let itemsRepository = RealItemsRepository(modelContainer: modelContainer)
         let habitsAPI = DailyHabitsAPI(client: LoggingAPIClient(base: AppAPIClient.live()))
         let habitsRepository = RealHabitsRepository(api: habitsAPI)
+        let tasksAPI = TasksAPI(client: LoggingAPIClient(base: AppAPIClient.live()))
+        let tasksRepository = RealTasksRepository(api: tasksAPI)
         return .init(
             authRepository: authRepository,
             itemsRepository: itemsRepository,
-            habitsRepository: habitsRepository
+            habitsRepository: habitsRepository,
+            tasksRepository: tasksRepository
         )
     }
     
@@ -53,10 +56,15 @@ extension AppEnvironment {
             appState: appState,
             repository: repositories.habitsRepository
         )
+        let tasksInteractor = RealTasksInteractor(
+            appState: appState,
+            repository: repositories.tasksRepository
+        )
         return .init(
             authInteractor: authInteractor,
             itemsInteractor: itemsInteractor,
-            habitsInteractor: habitsInteractor
+            habitsInteractor: habitsInteractor,
+            tasksInteractor: tasksInteractor
         )
     }
 }

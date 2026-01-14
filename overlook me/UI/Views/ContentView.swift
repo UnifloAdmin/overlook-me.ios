@@ -102,7 +102,7 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
             Button("Retry") {
-                Task {
+                _Concurrency.Task {
                     await interactor.loadItems()
                 }
             }
@@ -111,13 +111,13 @@ struct ContentView: View {
     }
 
     private func addItem() {
-        Task {
+        _Concurrency.Task {
             await interactor.createItem(timestamp: Date())
         }
     }
 
     private func deleteItems(offsets: IndexSet) {
-        Task {
+        _Concurrency.Task {
             for index in offsets {
                 let item = state.items.items[index]
                 await interactor.deleteItem(item)

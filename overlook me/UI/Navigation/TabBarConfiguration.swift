@@ -42,6 +42,13 @@ struct TabBarConfiguration: Equatable {
      
     )
     
+    static let tasks = TabBarConfiguration(
+        home: .init(title: "All Tasks", systemImage: "checklist"),
+        explore: .init(title: "Backlogs", systemImage: "tray.full"),
+        alerts: .init(title: "Analytics", systemImage: "chart.bar.xaxis"),
+        messages: nil
+    )
+    
     static let subscriptions = TabBarConfiguration(
         home: .init(title: "Home", systemImage: "house.fill"),
         explore: .init(title: "Plans", systemImage: "crown"),

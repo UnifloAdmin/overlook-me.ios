@@ -188,7 +188,7 @@ struct SideNavigationView: View {
     }
     
     private func logout() {
-        Task {
+_Concurrency.Task {
             await interactor.logout()
             isPresented = false
         }

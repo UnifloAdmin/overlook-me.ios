@@ -14,6 +14,7 @@ struct AppState {
     var auth = AuthState()
     var items = ItemsState()
     var habits = HabitsState()
+    var tasks = TasksState()
 }
 
 extension AppState {
@@ -44,5 +45,18 @@ extension AppState {
         var habits: [DailyHabitDTO] = []
         var isLoading: Bool = false
         var error: Error?
+        var localCompletions: [String: HabitCompletionLogDTO] = [:]
+        var pendingActionHabitId: String?
+        var actionError: String?
+    }
+}
+
+extension AppState {
+    struct TasksState {
+        var tasks: [Task] = []
+        var isLoading: Bool = false
+        var isSaving: Bool = false
+        var error: Error?
+        var lastCreatedTaskId: String?
     }
 }

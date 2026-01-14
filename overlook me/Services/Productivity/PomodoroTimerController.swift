@@ -48,7 +48,7 @@ final class PomodoroTimerController: ObservableObject {
             defaults.removeObject(forKey: endDateKey)
         }
         
-        Task { await restoreLiveActivityIfPossible() }
+_Concurrency.Task { await restoreLiveActivityIfPossible() }
     }
     
     var remainingTimeInterval: TimeInterval {
@@ -69,7 +69,7 @@ final class PomodoroTimerController: ObservableObject {
         isRunning = true
         defaults.set(end, forKey: endDateKey)
         
-        Task {
+_Concurrency.Task {
             await ensureNotificationPermission()
             await scheduleCompletionNotification(at: end)
             await startOrUpdateLiveActivity(endDate: end)
@@ -85,7 +85,7 @@ final class PomodoroTimerController: ObservableObject {
         
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationId])
         
-        Task { await endLiveActivity() }
+_Concurrency.Task { await endLiveActivity() }
     }
     
     // MARK: - Notifications

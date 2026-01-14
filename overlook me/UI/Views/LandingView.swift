@@ -64,7 +64,7 @@ struct LandingView: View {
             Auth0WebView(
                 onSuccess: { accessToken, idToken, refreshToken in
                     isPresentingAuthFlow = false
-                    Task {
+                    _Concurrency.Task {
                         await interactor.completeLogin(
                             accessToken: accessToken,
                             idToken: idToken,
@@ -74,7 +74,7 @@ struct LandingView: View {
                 },
                 onError: { error in
                     isPresentingAuthFlow = false
-                    Task {
+                    _Concurrency.Task {
                         await MainActor.run {
                             authError = error.localizedDescription
                         }

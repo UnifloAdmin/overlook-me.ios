@@ -26,22 +26,26 @@ extension DIContainer {
         let authInteractor: AuthInteractor
         let itemsInteractor: ItemsInteractor
         let habitsInteractor: HabitsInteractor
+        let tasksInteractor: TasksInteractor
         
         init(
             authInteractor: AuthInteractor,
             itemsInteractor: ItemsInteractor,
-            habitsInteractor: HabitsInteractor
+            habitsInteractor: HabitsInteractor,
+            tasksInteractor: TasksInteractor
         ) {
             self.authInteractor = authInteractor
             self.itemsInteractor = itemsInteractor
             self.habitsInteractor = habitsInteractor
+            self.tasksInteractor = tasksInteractor
         }
         
         static var stub: Self {
             .init(
                 authInteractor: StubAuthInteractor(),
                 itemsInteractor: StubItemsInteractor(),
-                habitsInteractor: StubHabitsInteractor()
+                habitsInteractor: StubHabitsInteractor(),
+                tasksInteractor: StubTasksInteractor()
             )
         }
     }
@@ -54,22 +58,26 @@ extension DIContainer {
         let authRepository: AuthRepository
         let itemsRepository: ItemsRepository
         let habitsRepository: HabitsRepository
+        let tasksRepository: TasksRepository
         
         init(
             authRepository: AuthRepository,
             itemsRepository: ItemsRepository,
-            habitsRepository: HabitsRepository
+            habitsRepository: HabitsRepository,
+            tasksRepository: TasksRepository
         ) {
             self.authRepository = authRepository
             self.itemsRepository = itemsRepository
             self.habitsRepository = habitsRepository
+            self.tasksRepository = tasksRepository
         }
         
         static var stub: Self {
             .init(
                 authRepository: StubAuthRepository(),
                 itemsRepository: StubItemsRepository(),
-                habitsRepository: StubHabitsRepository()
+                habitsRepository: StubHabitsRepository(),
+                tasksRepository: StubTasksRepository()
             )
         }
     }

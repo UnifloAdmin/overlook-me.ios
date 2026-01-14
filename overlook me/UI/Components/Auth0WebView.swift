@@ -197,7 +197,7 @@ struct Auth0WebView: UIViewControllerRepresentable {
                 return
             }
             
-            Task {
+_Concurrency.Task {
                 do {
                     let tokens = try await exchangeCodeForTokens(code: code)
                     await MainActor.run {

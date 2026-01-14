@@ -61,7 +61,7 @@ struct ViewHabitsView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                Task { await loadHabitsIfNeeded(force: true) }
+_Concurrency.Task { await loadHabitsIfNeeded(force: true) }
             } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
                     .font(.subheadline.weight(.semibold))

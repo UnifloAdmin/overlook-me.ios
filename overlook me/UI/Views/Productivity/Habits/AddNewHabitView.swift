@@ -328,7 +328,7 @@ struct AddNewHabitView: View {
             return
         }
         
-        Task {
+_Concurrency.Task {
             do {
                 _ = try await viewModel.save(userId: userId)
                 dismiss()

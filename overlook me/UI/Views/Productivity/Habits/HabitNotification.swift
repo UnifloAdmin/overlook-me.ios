@@ -86,7 +86,7 @@ struct HabitNotification: View {
         UserDefaults.standard.set(reminderTimes, forKey: "notifications_\(habit.id)")
         
         // Schedule Notifications
-        Task {
+        _Concurrency.Task {
             await scheduleNotifications()
         }
     }

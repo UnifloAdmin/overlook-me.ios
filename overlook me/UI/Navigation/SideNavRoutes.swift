@@ -13,7 +13,6 @@ enum SideNavRoute: String, Hashable {
     case productivityDashboard
     case tasks
     case dailyHabits
-    case checklists
     
     case mySubscriptions
     case managePlan
