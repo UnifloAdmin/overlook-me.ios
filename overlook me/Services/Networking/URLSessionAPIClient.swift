@@ -49,7 +49,14 @@ struct URLSessionAPIClient: APIClient {
 
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try jsonEncoder.encode(AnyEncodable(body))
+            let encodedBody = try jsonEncoder.encode(AnyEncodable(body))
+            request.httpBody = encodedBody
+            
+            // Log request body for debugging
+            if let jsonString = String(data: encodedBody, encoding: .utf8) {
+                print("📤 [APIClient] Request body for \(method.rawValue) \(path):")
+                print(jsonString)
+            }
         }
 
         let (data, response) = try await session.data(for: request)
@@ -59,6 +66,12 @@ struct URLSessionAPIClient: APIClient {
         }
 
         let decodedData = try responseDecoder.decodeIfNeeded(data)
+        
+        // Log raw JSON response for debugging
+        if let jsonString = String(data: decodedData, encoding: .utf8) {
+            print("📦 [APIClient] Raw JSON response for \(path):")
+            print(jsonString)
+        }
 
         // Allow empty bodies for endpoints returning no content.
         if decodedData.isEmpty, T.self == EmptyResponse.self {
@@ -66,7 +79,9 @@ struct URLSessionAPIClient: APIClient {
         }
 
         do {
-            return try jsonDecoder.decode(T.self, from: decodedData)
+            let decoded = try jsonDecoder.decode(T.self, from: decodedData)
+            print("✅ [APIClient] Successfully decoded response for \(path)")
+            return decoded
         } catch {
             if let unwrapped = ResponseEnvelopeUnwrapper.unwrap(decodedData) {
                 do {

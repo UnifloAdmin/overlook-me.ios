@@ -8,14 +8,8 @@ struct AddNewTask: View {
     @State private var title: String = ""
     @State private var description: String = ""
     @State private var priority: TaskPriority = .medium
-    @State private var status: TaskStatus = .pending
     
     // Dates and time
-    @State private var hasScheduledDate: Bool = false
-    @State private var scheduledDate: Date = Date()
-    @State private var hasScheduledTime: Bool = false
-    @State private var scheduledTime: Date = Date()
-    
     @State private var hasDueDate: Bool = false
     @State private var dueDate: Date = Date()
     
@@ -38,6 +32,7 @@ struct AddNewTask: View {
     // Advanced
     @State private var isProMode: Bool = false
     @State private var isFuture: Bool = false
+    @State private var showAdvancedOptions: Bool = false
     
     // UI State
     @State private var isSaving: Bool = false
@@ -52,15 +47,16 @@ struct AddNewTask: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Basic Info Section
-                Section("Task Details") {
+                // Required Info Section
+                Section("Required") {
                     TextField("Task title", text: $title)
-                    TextField("Description (optional)", text: $description, axis: .vertical)
+                    TextField("Description", text: $description, axis: .vertical)
                         .lineLimit(3...6)
-                }
-                
-                // Priority & Status Section
-                Section("Priority & Status") {
+                    Toggle("Due Date", isOn: $hasDueDate)
+                    if hasDueDate {
+                        DatePicker("Due", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
+                    }
+                    
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Priority")
                             .font(.subheadline)
@@ -105,142 +101,95 @@ struct AddNewTask: View {
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                }
+                
+                Section {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAdvancedOptions.toggle()
+                        }
+                    } label: {
+                        HStack {
+                            Text("Advanced Options")
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .rotationEffect(.degrees(showAdvancedOptions ? 180 : 0))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     
-                    VStack(alignment: .leading, spacing: 12) {
+                    if showAdvancedOptions {
                         Text("Status")
-                            .font(.subheadline)
+                            .font(.headline)
+                        Text("Defaults to Pending when creating a task.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                         
-                        HStack(spacing: 8) {
-                            ForEach([TaskStatus.pending, .inProgress, .completed], id: \.self) { s in
-                                Button {
-                                    status = s
-                                } label: {
-                                    VStack(spacing: 4) {
-                                        Image(systemName: statusIcon(s))
-                                            .font(.title3)
-                                        Text(statusLabel(s))
-                                            .font(.caption2)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.8)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 60)
-                                    .background {
-                                        if status == s {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(statusColor(s).opacity(0.15))
-                                                .overlay {
-                                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                        .fill(.ultraThinMaterial)
-                                                }
-                                        } else {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(.ultraThinMaterial)
-                                        }
-                                    }
-                                    .foregroundStyle(status == s ? statusColor(s) : .secondary)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .strokeBorder(status == s ? statusColor(s) : Color.secondary.opacity(0.2), lineWidth: status == s ? 2 : 1)
-                                    }
+                        Text("Duration")
+                            .font(.headline)
+                        Toggle("Estimated Duration", isOn: $hasEstimatedDuration)
+                        
+                        if hasEstimatedDuration {
+                            Stepper(value: $estimatedDurationMinutes, in: 5...480, step: 5) {
+                                HStack {
+                                    Text("Duration")
+                                    Spacer()
+                                    Text("\(estimatedDurationMinutes) min")
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
-                    }
-                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                }
-                
-                // Dates & Time Section
-                Section("Schedule") {
-                    Toggle("Scheduled Date", isOn: $hasScheduledDate)
-                    
-                    if hasScheduledDate {
-                        DatePicker("Date", selection: $scheduledDate, displayedComponents: .date)
                         
-                        Toggle("Include Time", isOn: $hasScheduledTime)
+                        Text("Organization")
+                            .font(.headline)
+                        TextField("Category", text: $category)
+                        TextField("Project", text: $project)
+                        TextField("Tags (comma separated)", text: $tags)
                         
-                        if hasScheduledTime {
-                            DatePicker("Time", selection: $scheduledTime, displayedComponents: .hourAndMinute)
-                        }
-                    }
-                    
-                    Toggle("Due Date", isOn: $hasDueDate)
-                    
-                    if hasDueDate {
-                        DatePicker("Due", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
-                    }
-                }
-                
-                // Duration Section
-                Section("Duration") {
-                    Toggle("Estimated Duration", isOn: $hasEstimatedDuration)
-                    
-                    if hasEstimatedDuration {
-                        Stepper(value: $estimatedDurationMinutes, in: 5...480, step: 5) {
-                            HStack {
-                                Text("Duration")
-                                Spacer()
-                                Text("\(estimatedDurationMinutes) min")
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                    }
-                }
-                
-                // Organization Section
-                Section("Organization") {
-                    TextField("Category", text: $category)
-                    TextField("Project", text: $project)
-                    TextField("Tags (comma separated)", text: $tags)
-                }
-                
-                // Color Section
-                Section("Color") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 16) {
-                            ForEach(colorOptions, id: \.self) { color in
-                                Button {
-                                    selectedColor = color
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color(hex: color))
-                                            .frame(width: 40, height: 40)
-                                        
-                                        if selectedColor == color {
+                        Text("Color")
+                            .font(.headline)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(colorOptions, id: \.self) { color in
+                                    Button {
+                                        selectedColor = color
+                                    } label: {
+                                        ZStack {
                                             Circle()
-                                                .strokeBorder(.white, lineWidth: 3)
+                                                .fill(Color(hex: color))
                                                 .frame(width: 40, height: 40)
                                             
-                                            Image(systemName: "checkmark")
-                                                .font(.caption.bold())
-                                                .foregroundStyle(.white)
+                                            if selectedColor == color {
+                                                Circle()
+                                                    .strokeBorder(.white, lineWidth: 3)
+                                                    .frame(width: 40, height: 40)
+                                                
+                                                Image(systemName: "checkmark")
+                                                    .font(.caption.bold())
+                                                    .foregroundStyle(.white)
+                                            }
                                         }
                                     }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .padding(.vertical, 8)
                         }
-                        .padding(.vertical, 8)
+                        
+                        Text("Location")
+                            .font(.headline)
+                        Toggle("Add Location", isOn: $hasLocation)
+                        
+                        if hasLocation {
+                            TextField("Location name", text: $location)
+                        }
+                        
+                        Text("Advanced")
+                            .font(.headline)
+                        Toggle("Pro Mode", systemImage: "star.fill", isOn: $isProMode)
+                        Toggle("Future Task", systemImage: "calendar.badge.clock", isOn: $isFuture)
                     }
-                }
-                
-                // Location Section
-                Section("Location") {
-                    Toggle("Add Location", isOn: $hasLocation)
-                    
-                    if hasLocation {
-                        TextField("Location name", text: $location)
-                    }
-                }
-                
-                // Advanced Options Section
-                Section("Advanced") {
-                    Toggle("Pro Mode", systemImage: "star.fill", isOn: $isProMode)
-                    Toggle("Future Task", systemImage: "calendar.badge.clock", isOn: $isFuture)
                 }
                 
                 // Error message
@@ -256,9 +205,13 @@ struct AddNewTask: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
                     }
+                    .accessibilityLabel("Close")
                 }
                 
                 ToolbarItem(placement: .confirmationAction) {
@@ -274,7 +227,7 @@ struct AddNewTask: View {
                                 .bold()
                         }
                     }
-                    .disabled(title.isEmpty || isSaving)
+                    .disabled(title.isEmpty || description.isEmpty || isSaving)
                 }
             }
         }
@@ -286,15 +239,16 @@ struct AddNewTask: View {
         isSaving = true
         errorMessage = nil
         
-        let scheduledTimeString: String? = hasScheduledTime ? formatTime(scheduledTime) : nil
+        let now = Date()
+        let scheduledTimeString: String? = formatTime(now)
         
         await container.interactors.tasksInteractor.createTask(
             title: title,
-            description: description.isEmpty ? nil : description,
+            description: description,
             descriptionFormat: "plain",
-            status: status,
+            status: .pending,
             priority: priority,
-            scheduledDate: hasScheduledDate ? scheduledDate : nil,
+            scheduledDate: now,
             scheduledTime: scheduledTimeString,
             dueDateTime: hasDueDate ? dueDate : nil,
             estimatedDurationMinutes: hasEstimatedDuration ? estimatedDurationMinutes : nil,
@@ -349,39 +303,10 @@ struct AddNewTask: View {
         case .critical: return .red
         case .high: return .orange
         case .medium: return .blue
-        case .low: return .gray
+        case .low: return .green
         }
     }
     
-    private func statusIcon(_ s: TaskStatus) -> String {
-        switch s {
-        case .pending: return "circle"
-        case .inProgress: return "arrow.triangle.2.circlepath"
-        case .completed: return "checkmark.circle.fill"
-        case .cancelled: return "xmark.circle"
-        case .onHold: return "pause.circle"
-        }
-    }
-    
-    private func statusLabel(_ s: TaskStatus) -> String {
-        switch s {
-        case .pending: return "Pending"
-        case .inProgress: return "In Progress"
-        case .completed: return "Done"
-        case .cancelled: return "Cancelled"
-        case .onHold: return "On Hold"
-        }
-    }
-    
-    private func statusColor(_ s: TaskStatus) -> Color {
-        switch s {
-        case .pending: return .gray
-        case .inProgress: return .blue
-        case .completed: return .green
-        case .cancelled: return .red
-        case .onHold: return .orange
-        }
-    }
 }
 
 #Preview {

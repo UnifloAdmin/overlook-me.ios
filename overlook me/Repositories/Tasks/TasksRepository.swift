@@ -146,6 +146,13 @@ struct RealTasksRepository: TasksRepository {
         isProModeEnabled: Bool?,
         isFuture: Bool?
     ) async throws -> AutoSaveTaskResponseDTO {
+        print("📡 [TasksRepository] Creating task:")
+        print("   title: \(title)")
+        print("   dueDateTime: \(dueDateTime?.description ?? "nil")")
+        
+        let dueDateTimeString = dueDateTime.map { dateFormatter.string(from: $0) }
+        print("   dueDateTime formatted: \(dueDateTimeString ?? "nil")")
+        
         let request = AutoSaveTaskRequestDTO(
             taskId: nil,
             userId: userId,
@@ -156,7 +163,7 @@ struct RealTasksRepository: TasksRepository {
             priority: priority,
             scheduledDate: scheduledDate.map { dateFormatter.string(from: $0) },
             scheduledTime: scheduledTime,
-            dueDateTime: dueDateTime.map { dateFormatter.string(from: $0) },
+            dueDateTime: dueDateTimeString,
             estimatedDurationMinutes: estimatedDurationMinutes,
             category: category,
             project: project,

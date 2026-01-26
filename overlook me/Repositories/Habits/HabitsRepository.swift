@@ -10,6 +10,11 @@ protocol HabitsRepository {
         isArchived: Bool
     ) async throws -> [DailyHabitDTO]
     
+    func fetchArchivedHabits(
+        userId: String,
+        oauthId: String?
+    ) async throws -> [DailyHabitDTO]
+    
     func fetchCompletionLogs(
         habitId: String,
         userId: String,
@@ -22,6 +27,13 @@ protocol HabitsRepository {
         userId: String,
         oauthId: String?,
         completion: LogHabitCompletionRequestDTO
+    ) async throws -> DailyHabitDTO
+
+    func setArchiveStatus(
+        habitId: String,
+        userId: String,
+        oauthId: String?,
+        isArchived: Bool
     ) async throws -> DailyHabitDTO
 }
 
@@ -54,6 +66,23 @@ struct RealHabitsRepository: HabitsRepository {
             isActive: isActive,
             isArchived: isArchived,
             date: dateString
+        )
+    }
+    
+    func fetchArchivedHabits(
+        userId: String,
+        oauthId: String?
+    ) async throws -> [DailyHabitDTO] {
+        return try await api.getHabits(
+            userId: userId,
+            oauthId: oauthId,
+            habitId: nil,
+            category: nil,
+            priority: nil,
+            isPinned: nil,
+            isActive: nil,
+            isArchived: true,
+            date: nil
         )
     }
     
@@ -98,6 +127,20 @@ struct RealHabitsRepository: HabitsRepository {
             oauthId: oauthId
         )
     }
+
+    func setArchiveStatus(
+        habitId: String,
+        userId: String,
+        oauthId: String?,
+        isArchived: Bool
+    ) async throws -> DailyHabitDTO {
+        try await api.setArchiveStatus(
+            habitId: habitId,
+            userId: userId,
+            oauthId: oauthId,
+            isArchived: isArchived
+        )
+    }
     
     private static var defaultDateFormatter: DateFormatter {
         let formatter = DateFormatter()
@@ -125,6 +168,13 @@ struct StubHabitsRepository: HabitsRepository {
         return []
     }
     
+    func fetchArchivedHabits(
+        userId: String,
+        oauthId: String?
+    ) async throws -> [DailyHabitDTO] {
+        return []
+    }
+    
     func fetchCompletionLogs(
         habitId: String,
         userId: String,
@@ -139,6 +189,15 @@ struct StubHabitsRepository: HabitsRepository {
         userId: String,
         oauthId: String?,
         completion: LogHabitCompletionRequestDTO
+    ) async throws -> DailyHabitDTO {
+        fatalError("Stub not implemented")
+    }
+
+    func setArchiveStatus(
+        habitId: String,
+        userId: String,
+        oauthId: String?,
+        isArchived: Bool
     ) async throws -> DailyHabitDTO {
         fatalError("Stub not implemented")
     }

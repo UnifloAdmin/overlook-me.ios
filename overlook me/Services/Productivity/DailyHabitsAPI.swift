@@ -280,13 +280,16 @@ extension DailyHabitsAPI {
     }
 
     /// PATCH `/dailyhabits/{habitId}/archive?userId=...&oauthId=...`
-    func toggleArchive(habitId: String, userId: String, oauthId: String? = nil) async throws -> DailyHabitDTO {
-        try await client.request(
+    func setArchiveStatus(habitId: String, userId: String, oauthId: String? = nil, isArchived: Bool) async throws -> DailyHabitDTO {
+        struct ArchiveRequest: Codable {
+            let isArchived: Bool
+        }
+        return try await client.request(
             .patch,
             path: "dailyhabits/\(habitId)/archive",
             query: ["userId": userId, "oauthId": oauthId],
             headers: [:],
-            body: JSONValue.object([:])
+            body: ArchiveRequest(isArchived: isArchived)
         )
     }
 

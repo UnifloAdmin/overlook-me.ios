@@ -38,12 +38,25 @@ struct TaskDTO: Codable, Sendable, Identifiable {
     let scheduledDate: String?
     let scheduledTime: String?
     let dueDateTime: String?
+    
+    let estimatedDurationMinutes: Int?
+    let category: String?
+    let project: String?
+    let tags: String?
+    let color: String?
 
     let progressPercentage: Int?
+    let location: String?
+    let latitude: Double?
+    let longitude: Double?
+    
     let isPinned: Bool?
     let isArchived: Bool?
     let isBlocked: Bool?
-
+    let isProModeEnabled: Bool?
+    let isFuture: Bool?
+    
+    let importanceScore: Int?
     let createdAt: String?
     let updatedAt: String?
 }

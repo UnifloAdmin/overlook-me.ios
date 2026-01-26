@@ -4,6 +4,8 @@ protocol HabitsInteractor {
     func loadHabits(for date: Date?) async
     func loadCompletionLogs(for date: Date) async
     func performHabitAction(_ action: HabitAction, for date: Date) async
+    func toggleArchive(for habit: DailyHabitDTO) async
+    func loadArchivedHabits() async -> [DailyHabitDTO]
     func clearLocalCompletions()
     func clearActionError()
 }
@@ -225,6 +227,88 @@ struct RealHabitsInteractor: HabitsInteractor {
         
         appState.state.habits.pendingActionHabitId = nil
     }
+
+    func toggleArchive(for habit: DailyHabitDTO) async {
+        guard appState.state.habits.pendingActionHabitId == nil else { return }
+        guard let authUser = appState.state.auth.user else {
+            appState.state.habits.actionError = "Please sign in again to update this habit."
+            return
+        }
+
+        let userId = authUser.id
+        let oauthId = authUser.oauthId.isEmpty ? nil : authUser.oauthId
+        let currentlyArchived = habit.isArchived ?? false
+        let newArchivedState = !currentlyArchived
+
+        appState.state.habits.pendingActionHabitId = habit.id
+
+        #if DEBUG
+        print("📦 Toggling archive for habit: \(habit.name) (id: \(habit.id))")
+        print("   Current isArchived: \(currentlyArchived) -> New: \(newArchivedState)")
+        #endif
+
+        do {
+            let updatedHabit = try await repository.setArchiveStatus(
+                habitId: habit.id,
+                userId: userId,
+                oauthId: oauthId,
+                isArchived: newArchivedState
+            )
+
+            #if DEBUG
+            print("   ✅ Archive toggled successfully. New isArchived: \(updatedHabit.isArchived ?? false)")
+            #endif
+
+            if updatedHabit.isArchived == true {
+                appState.state.habits.habits.removeAll { $0.id == updatedHabit.id }
+            } else {
+                // Add back to list if unarchiving
+                if !appState.state.habits.habits.contains(where: { $0.id == updatedHabit.id }) {
+                    appState.state.habits.habits.append(updatedHabit)
+                } else {
+                    appState.state.habits.habits = appState.state.habits.habits.map { current in
+                        current.id == updatedHabit.id ? updatedHabit : current
+                    }
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("   ❌ Failed to toggle archive: \(error)")
+            #endif
+            appState.state.habits.actionError = "We couldn't archive \"\(habit.name)\". Please try again."
+        }
+
+        appState.state.habits.pendingActionHabitId = nil
+    }
+    
+    func loadArchivedHabits() async -> [DailyHabitDTO] {
+        guard let authUser = appState.state.auth.user else {
+            return []
+        }
+        
+        let userId = authUser.id
+        let oauthId = authUser.oauthId.isEmpty ? nil : authUser.oauthId
+        
+        #if DEBUG
+        print("📦 Loading archived habits for user: \(userId)")
+        #endif
+        
+        do {
+            let habits = try await repository.fetchArchivedHabits(
+                userId: userId,
+                oauthId: oauthId
+            )
+            #if DEBUG
+            print("📦 Found \(habits.count) archived habits")
+            #endif
+            return habits
+        } catch {
+            #if DEBUG
+            print("❌ Failed to load archived habits: \(error)")
+            #endif
+            return []
+        }
+    }
     
     func clearLocalCompletions() {
         appState.state.habits.localCompletions = [:]
@@ -336,6 +420,8 @@ struct StubHabitsInteractor: HabitsInteractor {
     func loadHabits(for date: Date?) async {}
     func loadCompletionLogs(for date: Date) async {}
     func performHabitAction(_ action: HabitAction, for date: Date) async {}
+    func toggleArchive(for habit: DailyHabitDTO) async {}
+    func loadArchivedHabits() async -> [DailyHabitDTO] { [] }
     func clearLocalCompletions() {}
     func clearActionError() {}
 }

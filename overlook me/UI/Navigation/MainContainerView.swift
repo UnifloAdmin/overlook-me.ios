@@ -16,6 +16,9 @@ struct MainContainerView: View {
     // Keep navigation *inside* tabs so the tab bar stays visible.
     @State private var homePath = NavigationPath()
     
+    // Shared ViewModel for Transactions tabs
+    @State private var transactionsViewModel = TransactionsViewModel()
+    
     var body: some View {
         TabView(selection: $selection) {
             Tab(tabBar.config.home.title, systemImage: tabBar.config.home.systemImage, value: .home) {
@@ -28,9 +31,11 @@ struct MainContainerView: View {
                     .environmentObject(tabBar)
             }
             
-            Tab(tabBar.config.alerts.title, systemImage: tabBar.config.alerts.systemImage, value: .notifications) {
-                alertsTabContent()
-                    .environmentObject(tabBar)
+            if let alerts = tabBar.config.alerts {
+                Tab(alerts.title, systemImage: alerts.systemImage, value: .notifications) {
+                    alertsTabContent()
+                        .environmentObject(tabBar)
+                }
             }
             
             if let messages = tabBar.config.messages {
@@ -94,6 +99,10 @@ struct MainContainerView: View {
             if tabBar.config.messages == nil && newValue == .messages {
                 selection = oldValue
             }
+            
+            if tabBar.config.alerts == nil && newValue == .notifications {
+                selection = oldValue
+            }
         }
         .onChange(of: tabBar.config) { oldValue, newValue in
             // Prevent redundant updates if config hasn't actually changed
@@ -101,13 +110,13 @@ struct MainContainerView: View {
             
             print("⚙️ TabBar config changed: \(oldValue) → \(newValue)")
             
-            // Clear navigation path when entering dailyHabits or tasks mode
-            if newValue == .dailyHabits || newValue == .tasks {
+            // Clear navigation path when entering dailyHabits, tasks, health, bankAccounts, or transactions mode
+            if newValue == .dailyHabits || newValue == .tasks || newValue == .health || newValue == .bankAccounts || newValue == .transactions {
                 homePath = NavigationPath()
             }
             
-            // Clear path when leaving dailyHabits or tasks mode
-            if (oldValue == .dailyHabits || oldValue == .tasks) && newValue != oldValue {
+            // Clear path when leaving dailyHabits, tasks, health, bankAccounts, or transactions mode
+            if (oldValue == .dailyHabits || oldValue == .tasks || oldValue == .health || oldValue == .bankAccounts || oldValue == .transactions) && newValue != oldValue {
                 homePath = NavigationPath()
                 selection = .home
             }
@@ -177,13 +186,89 @@ struct MainContainerView: View {
             return
         }
         
+        if route == .healthDashboard || route == .healthInsights {
+            // Switch the entire experience into the dedicated Health tab
+            print("📱 Switching to Health mode")
+            
+            // Batch all state changes together to avoid multiple updates per frame
+            let needsConfigChange = tabBar.config != .health
+            
+            // Clear path first
+            homePath = NavigationPath()
+            
+            // Switch to the alerts tab (where health content is)
+            if selection != .notifications {
+                selection = .notifications
+            }
+            
+            // Finally update config if needed with a slight delay to avoid same-frame updates
+            if needsConfigChange {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
+                    transaction.disablesAnimations = false
+                    withTransaction(transaction) {
+                        self.tabBar.config = .health
+                    }
+                }
+            }
+            return
+        }
+        
+        if route == .bankAccounts {
+            // Switch the entire experience into the dedicated Bank Accounts mode
+            print("📱 Switching to Bank Accounts mode")
+            
+            let needsConfigChange = tabBar.config != .bankAccounts
+            
+            homePath = NavigationPath()
+            
+            if selection != .home {
+                selection = .home
+            }
+            
+            if needsConfigChange {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
+                    transaction.disablesAnimations = false
+                    withTransaction(transaction) {
+                        self.tabBar.config = .bankAccounts
+                    }
+                }
+            }
+            return
+        }
+        
+        if route == .transactions {
+            // Switch the entire experience into the dedicated Transactions mode
+            print("📱 Switching to Transactions mode")
+            
+            let needsConfigChange = tabBar.config != .transactions
+            
+            homePath = NavigationPath()
+            
+            if selection != .home {
+                selection = .home
+            }
+            
+            if needsConfigChange {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
+                    transaction.disablesAnimations = false
+                    withTransaction(transaction) {
+                        self.tabBar.config = .transactions
+                    }
+                }
+            }
+            return
+        }
+        
         print("📱 Navigating to: \(route)")
         
         // For other routes, ensure we're in default mode and coordinate navigation
-        let needsConfigReset = tabBar.config == .dailyHabits || tabBar.config == .tasks
+        let needsConfigReset = tabBar.config == .dailyHabits || tabBar.config == .tasks || tabBar.config == .health || tabBar.config == .bankAccounts || tabBar.config == .transactions
         
         if needsConfigReset {
-            // Reset from dailyHabits or tasks mode
+            // Reset from dailyHabits, tasks, or health mode
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 var transaction = Transaction(animation: .easeInOut(duration: 0.35))
                 transaction.disablesAnimations = false
@@ -212,7 +297,18 @@ struct MainContainerView: View {
     
     @ViewBuilder
     func homeTabContent() -> some View {
-        HomeView(path: $homePath)
+        if tabBar.config == .bankAccounts {
+            NavigationStack {
+                BankAccountsView()
+                    .tabBarConfig(.bankAccounts)
+            }
+        } else if tabBar.config == .transactions {
+            NavigationStack {
+                TransactionsView(viewModel: transactionsViewModel, tab: .analytics)
+            }
+        } else {
+            HomeView(path: $homePath)
+        }
     }
     
     @ViewBuilder
@@ -226,6 +322,15 @@ struct MainContainerView: View {
             NavigationStack {
                 TaskBacklogsView()
                     .tabBarConfig(.tasks)
+            }
+        } else if tabBar.config == .bankAccounts {
+            NavigationStack {
+                BankAccountTrendsView()
+                    .tabBarConfig(.bankAccounts)
+            }
+        } else if tabBar.config == .transactions {
+            NavigationStack {
+                TransactionsView(viewModel: transactionsViewModel, tab: .ledger)
             }
         } else {
             NavigationStack {
@@ -247,10 +352,19 @@ struct MainContainerView: View {
                 TaskAnalyticsView()
                     .tabBarConfig(.tasks)
             }
+        } else if tabBar.config == .health {
+            NavigationStack {
+                HealthInsightsView()
+                    .tabBarConfig(.health)
+            }
+        } else if tabBar.config == .transactions {
+            NavigationStack {
+                TransactionsView(viewModel: transactionsViewModel, tab: .merchants)
+            }
         } else {
             NavigationStack {
                 HealthView()
-                    .tabBarConfig(.default)
+                    .tabBarConfig(.health)
             }
         }
     }

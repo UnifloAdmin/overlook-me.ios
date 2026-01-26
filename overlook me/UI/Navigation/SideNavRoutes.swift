@@ -2,9 +2,11 @@ import SwiftUI
 
 enum SideNavRoute: String, Hashable {
     case homeDashboard
+    case weeklyInsights
     
     case financeDashboard
     case bankAccounts
+    case trends
     case transactions
     case budgets
     case insights
@@ -14,8 +16,14 @@ enum SideNavRoute: String, Hashable {
     case tasks
     case dailyHabits
     
+    case healthDashboard
+    case healthInsights
+    case fitness
+    
     case mySubscriptions
     case managePlan
+    case notificationManage
+    case friendCircle
 }
 
 struct SideNavItem: Identifiable {
@@ -39,9 +47,8 @@ let SIDE_NAV_SECTIONS: [SideNavSection] = [
         label: "Dashboards",
         color: Color(hex: "#ff7043"),
         items: [
-            .init(route: .homeDashboard, label: "Home", systemImage: "house.circle.fill"),
-            .init(route: .financeDashboard, label: "Finance", systemImage: "banknote.fill"),
-            .init(route: .productivityDashboard, label: "Productivity", systemImage: "bolt.circle.fill")
+            .init(route: .homeDashboard, label: "Home", systemImage: "house"),
+            .init(route: .weeklyInsights, label: "Weekly Insights", systemImage: "calendar.badge.clock")
         ]
     ),
     .init(
@@ -50,6 +57,7 @@ let SIDE_NAV_SECTIONS: [SideNavSection] = [
         color: .green,
         items: [
             .init(route: .bankAccounts, label: "Bank Accounts", systemImage: "building.columns.fill"),
+            .init(route: .transactions, label: "Transactions", systemImage: "arrow.left.arrow.right"),
             .init(route: .budgets, label: "Budgets", systemImage: "wallet.pass.fill"),
             .init(route: .mySubscriptions, label: "Recurring Payments", systemImage: "arrow.clockwise.circle.fill"),
             .init(route: .insights, label: "Insights", systemImage: "chart.bar.xaxis")
@@ -65,11 +73,22 @@ let SIDE_NAV_SECTIONS: [SideNavSection] = [
         ]
     ),
     .init(
-        id: "subscriptions",
-        label: "Subscriptions",
+        id: "health",
+        label: "Health",
+        color: .pink,
+        items: [
+            .init(route: .healthInsights, label: "Insights", systemImage: "chart.line.uptrend.xyaxis"),
+            .init(route: .fitness, label: "Fitness", systemImage: "figure.run")
+        ]
+    ),
+    .init(
+        id: "controllers",
+        label: "Controllers",
         color: Color(hex: "#3949ab"),
         items: [
-            .init(route: .managePlan, label: "Manage Plan", systemImage: "star.circle.fill")
+            .init(route: .managePlan, label: "Manage Plan", systemImage: "star.circle.fill"),
+            .init(route: .notificationManage, label: "Notifications", systemImage: "bell.badge"),
+            .init(route: .friendCircle, label: "My Friend Circle", systemImage: "person.2.circle")
         ]
     )
 ]

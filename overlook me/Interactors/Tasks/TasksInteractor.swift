@@ -134,9 +134,16 @@ struct RealTasksInteractor: TasksInteractor {
             if taskDTOs.isEmpty {
                 print("⚠️ [TasksInteractor] No tasks returned from API")
             } else {
-                print("📋 [TasksInteractor] Task titles:")
+                print("📋 [TasksInteractor] Task details:")
                 for (index, dto) in taskDTOs.enumerated() {
-                    print("  \(index + 1). \(dto.title) (status: \(dto.status?.rawValue ?? "nil"), priority: \(dto.priority?.rawValue ?? "nil"))")
+                    print("\n  [\(index + 1)] \(dto.title)")
+                    print("     - id: \(dto.id)")
+                    print("     - status: \(dto.status?.rawValue ?? "nil")")
+                    print("     - priority: \(dto.priority?.rawValue ?? "nil")")
+                    print("     - dueDateTime: \(dto.dueDateTime ?? "nil")")
+                    print("     - scheduledDate: \(dto.scheduledDate ?? "nil")")
+                    print("     - category: \(dto.category ?? "nil")")
+                    print("     - project: \(dto.project ?? "nil")")
                 }
             }
             

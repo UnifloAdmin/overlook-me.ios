@@ -9,7 +9,7 @@ struct TabItemStyle: Equatable {
 struct TabBarConfiguration: Equatable {
     var home: TabItemStyle
     var explore: TabItemStyle
-    var alerts: TabItemStyle
+    var alerts: TabItemStyle?
     var messages: TabItemStyle?
     var preserveTrailingSlot: Bool = false
     
@@ -49,11 +49,32 @@ struct TabBarConfiguration: Equatable {
         messages: nil
     )
     
+    static let bankAccounts = TabBarConfiguration(
+        home: .init(title: "Accounts", systemImage: "building.columns.fill"),
+        explore: .init(title: "Trends", systemImage: "chart.line.uptrend.xyaxis"),
+        alerts: nil,
+        messages: nil
+    )
+    
+    static let transactions = TabBarConfiguration(
+        home: .init(title: "Analytics", systemImage: "chart.bar.xaxis"),
+        explore: .init(title: "Ledger", systemImage: "list.bullet.rectangle"),
+        alerts: .init(title: "Merchants", systemImage: "storefront"),
+        messages: nil
+    )
+    
     static let subscriptions = TabBarConfiguration(
         home: .init(title: "Home", systemImage: "house.fill"),
         explore: .init(title: "Plans", systemImage: "crown"),
         alerts: .init(title: "Alerts", systemImage: "bell.fill"),
         messages: .init(title: "Support", systemImage: "questionmark.circle")
+    )
+    
+    static let health = TabBarConfiguration(
+        home: .init(title: "Insights", systemImage: "chart.line.uptrend.xyaxis"),
+        explore: .init(title: "Sleep", systemImage: "bed.double.fill"),
+        alerts: .init(title: "Fitness", systemImage: "figure.run"),
+        messages: .init(title: "Heart", systemImage: "heart.fill")
     )
 }
 

@@ -4,8 +4,6 @@
 <dict>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -22,6 +20,11 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.overlookme.refresh</string>
 	</array>
 </dict>
 </plist>

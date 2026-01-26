@@ -24,6 +24,8 @@ struct DailyHabitsView: View {
     @State private var notificationUpdateTrigger = UUID()
     @State private var showFullInsight = false
     @State private var isBootstrappingHabits = true
+    @State private var isPresentingFilters = false
+    @State private var habitFilters = HabitFilters()
     
     private var habitsState: AppState.HabitsState { container.appState.state.habits }
     private var habitsInteractor: HabitsInteractor { container.interactors.habitsInteractor }
@@ -71,6 +73,13 @@ struct DailyHabitsView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button(action: { isPresentingFilters = true }) {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .font(.title3.weight(.semibold))
+                }
+                .accessibilityLabel("Filter Habits")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button(action: { isPresentingAddHabit = true }) {
                     Image(systemName: "plus")
                         .font(.title3.weight(.semibold))
@@ -82,6 +91,14 @@ struct DailyHabitsView: View {
             AddNewHabitView()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isPresentingFilters) {
+            DailyHabitsFilterSheet(
+                filters: $habitFilters,
+                onUnarchive: handleUnarchive
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
         }
         .sheet(item: $selectedHabitForDetail) { habit in
             HabitViewSheet(
@@ -170,17 +187,46 @@ _Concurrency.Task { await loadHabitsIfNeeded(force: true) }
 lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque penatibus et magnis dis parturient montes. nullam habitant morbi tristique senectus et netus ac turpis egestas euismod. integer cursus justo luctus mi malesuada, sed rutrum sapien pretium. maecenas mattis ligula pulvinar lacus sodales bibendum, finibus ligula semper mauris ullamcorper. quisque congue risus lectus, consequat tortor dapibus fringilla odio. proin posuere ante vel elit posuere luctus, quis faucibus lorem rhoncus. vestibulum enim tellus, molestie facilisis pharetra id, pulvinar id nisl. vivamus ultricies arcu nibh, iaculis lacinia neque porta ut. suspendisse fermentum metus augue, fermentum gravida quam dictum et. curabitur magna quam, congue at nisl vel, fermentum viverra erat. quisque commodo feugiat erat non varius. in vehicula mauris nunc, interdum aliquam libero tristique non. sed vulputate eros vitae nisl gravida euismod ornare tellus. pellentesque quis magna dictum, mattis diam eu, convallis ligula. morbi fringilla sapien in erat auctor dapibus. nam eget felis convallis, vehicula arcu eget, gravida orci. fusce malesuada molestie magna, eget imperdiet felis pretium ac. duis massa elit, efficitur eget interdum sit amet, suscipit at lacus. sed sed vehicula lorem, quis feugiat nisi. curabitur volutpat nisl vitae arcu tincidunt bibendum suscipit augue. integer dignissim ligula in odio sagittis pharetra.
 """
     
+    private var filteredHabits: [DailyHabitDTO] {
+        displayedHabits.filter { habit in
+            // Filter by habit type
+            if let typeFilter = habitFilters.habitType {
+                let isPositive = habit.isPositive ?? true
+                if typeFilter == .build && !isPositive { return false }
+                if typeFilter == .breakHabit && isPositive { return false }
+            }
+            
+            // Filter by priority
+            if let priorityFilter = habitFilters.priority {
+                guard let habitPriority = habit.priority?.lowercased() else { return false }
+                if habitPriority != priorityFilter.rawValue { return false }
+            }
+            
+            // Filter by category
+            if let categoryFilter = habitFilters.category, !categoryFilter.isEmpty {
+                guard let habitCategory = habit.category?.lowercased() else { return false }
+                if habitCategory != categoryFilter.lowercased() { return false }
+            }
+            
+            return true
+        }
+    }
+    
     @ViewBuilder
     private var habitsSection: some View {
         if shouldShowInitialLoader || habitsState.isLoading {
             habitsLoadingView
         } else if let error = habitsState.error {
             habitsErrorView(error)
-        } else if displayedHabits.isEmpty {
-            habitsEmptyView
+        } else if filteredHabits.isEmpty {
+            if displayedHabits.isEmpty {
+                habitsEmptyView
+            } else {
+                noMatchingFiltersView
+            }
         } else {
             VStack(spacing: 16) {
-                ForEach(displayedHabits) { habit in
+                ForEach(filteredHabits) { habit in
                     HabitCardView(
                         habit: habit,
                         completion: completionLog(for: habit),
@@ -189,11 +235,38 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
                         onNotification: { selectedHabitForNotification = $0 },
                         onPomodoro: { selectedHabitForPomodoro = $0 },
                         onSelect: { selectedHabitForDetail = $0 },
+                        onArchive: handleArchive,
+                        onEdit: { selectedHabitForDetail = $0 },
                         notificationUpdateTrigger: notificationUpdateTrigger
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
             }
         }
+    }
+    
+    private var noMatchingFiltersView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("No matching habits")
+                .font(.headline)
+            Text("Try adjusting your filters to see more habits.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                habitFilters = HabitFilters()
+            } label: {
+                Text("Clear Filters")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(cardBackground)
     }
     
     private var shouldShowInitialLoader: Bool {
@@ -381,6 +454,32 @@ _Concurrency.Task {
         }
     }
 
+    private func handleArchive(_ habit: DailyHabitDTO) {
+        guard habitsState.pendingActionHabitId == nil else { return }
+
+        _Concurrency.Task {
+            await habitsInteractor.toggleArchive(for: habit)
+            await MainActor.run {
+                displayedHabits = habitsState.habits
+                if let detailHabit = selectedHabitForDetail,
+                   let updated = habitsState.habits.first(where: { $0.id == detailHabit.id }) {
+                    selectedHabitForDetail = updated
+                } else if selectedHabitForDetail?.id == habit.id {
+                    selectedHabitForDetail = nil
+                }
+            }
+        }
+    }
+    
+    private func handleUnarchive(_ habit: DailyHabitDTO) {
+        _Concurrency.Task {
+            await habitsInteractor.toggleArchive(for: habit)
+            await MainActor.run {
+                displayedHabits = habitsState.habits
+            }
+        }
+    }
+
     private func completionLog(for habit: DailyHabitDTO) -> HabitCompletionLogDTO? {
         let dayKey = Self.dayFormatter.string(from: selectedDate)
         
@@ -505,10 +604,21 @@ private struct HabitCardView: View {
     let onNotification: (DailyHabitDTO) -> Void
     let onPomodoro: (DailyHabitDTO) -> Void
     let onSelect: (DailyHabitDTO) -> Void
+    let onArchive: (DailyHabitDTO) -> Void
+    let onEdit: (DailyHabitDTO) -> Void
     let notificationUpdateTrigger: UUID
     let extraContent: AnyView?
     @State private var celebrationTrigger = 0
     @State private var notificationCount: Int = 0
+    @State private var dragOffset: CGFloat = 0
+    @State private var swipeDirection: SwipeDirection = .none
+    
+    private let swipeThreshold: CGFloat = 60
+    private let swipeOpenWidth: CGFloat = 80
+    
+    private enum SwipeDirection {
+        case none, left, right
+    }
     
     init(
         habit: DailyHabitDTO,
@@ -518,6 +628,8 @@ private struct HabitCardView: View {
         onNotification: @escaping (DailyHabitDTO) -> Void,
         onPomodoro: @escaping (DailyHabitDTO) -> Void,
         onSelect: @escaping (DailyHabitDTO) -> Void,
+        onArchive: @escaping (DailyHabitDTO) -> Void,
+        onEdit: @escaping (DailyHabitDTO) -> Void,
         notificationUpdateTrigger: UUID = UUID(),
         extraContent: AnyView? = nil
     ) {
@@ -528,6 +640,8 @@ private struct HabitCardView: View {
         self.onNotification = onNotification
         self.onPomodoro = onPomodoro
         self.onSelect = onSelect
+        self.onArchive = onArchive
+        self.onEdit = onEdit
         self.notificationUpdateTrigger = notificationUpdateTrigger
         self.extraContent = extraContent
     }
@@ -540,35 +654,212 @@ private struct HabitCardView: View {
     private var isActionDisabled: Bool { isPerformingAction || completion != nil }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            headerRow
+        ZStack {
+            // Archive action revealed when swiping right
+            archiveActionBackground
             
-            Divider()
-                .frame(height: 0.5)
-                .opacity(0.5)
+            // Edit action revealed when swiping left
+            editActionBackground
             
-            metaRow
-            
-            Divider()
-                .frame(height: 0.5)
-                .opacity(0.5)
-            
-            actionRow
-            
-            if let extraContent {
+            // Main card content
+            VStack(alignment: .leading, spacing: 16) {
+                headerRow
+                
                 Divider()
                     .frame(height: 0.5)
                     .opacity(0.5)
-                extraContent
+                
+                metaRow
+                
+                Divider()
+                    .frame(height: 0.5)
+                    .opacity(0.5)
+                
+                actionRow
+                
+                if let extraContent {
+                    Divider()
+                        .frame(height: 0.5)
+                        .opacity(0.5)
+                    extraContent
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DailyHabitsPalette.cardBackground(for: colorScheme))
+            .cornerRadius(16)
+            .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 8, y: 4)
+            .offset(x: dragOffset)
+            .gesture(
+                DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                    .onChanged { value in
+                        handleDragChanged(value)
+                    }
+                    .onEnded { value in
+                        handleDragEnded(value)
+                    }
+            )
+            .onTapGesture {
+                if swipeDirection != .none {
+                    // Close the swipe action
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        dragOffset = 0
+                        swipeDirection = .none
+                    }
+                } else if dragOffset == 0 {
+                    onSelect(habit)
+                }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DailyHabitsPalette.cardBackground(for: colorScheme))
+        .clipped()
+    }
+    
+    private var archiveActionBackground: some View {
+        HStack(spacing: 0) {
+            Button {
+                triggerArchive()
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "archivebox.fill")
+                        .font(.title2.weight(.semibold))
+                    Text("Archive")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundColor(.white)
+                .frame(width: swipeOpenWidth)
+                .frame(maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color.orange, Color.orange.opacity(0.8)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
         .cornerRadius(16)
-        .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 8, y: 4)
-        .onTapGesture { onSelect(habit) }
+        .opacity(dragOffset > 0 ? min(dragOffset / 40, 1.0) : 0)
+    }
+    
+    private var editActionBackground: some View {
+        HStack(spacing: 0) {
+            Spacer()
+            
+            Button {
+                triggerEdit()
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "pencil")
+                        .font(.title2.weight(.semibold))
+                    Text("Edit")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundColor(.white)
+                .frame(width: swipeOpenWidth)
+                .frame(maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color.blue.opacity(0.8), Color.blue],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .cornerRadius(16)
+        .opacity(dragOffset < 0 ? min(abs(dragOffset) / 40, 1.0) : 0)
+    }
+    
+    private func triggerArchive() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            dragOffset = 0
+            swipeDirection = .none
+        }
+        onArchive(habit)
+    }
+    
+    private func triggerEdit() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            dragOffset = 0
+            swipeDirection = .none
+        }
+        onEdit(habit)
+    }
+    
+    private func handleDragChanged(_ value: DragGesture.Value) {
+        let horizontal = value.translation.width
+        
+        // Calculate offset based on current swipe direction
+        var startOffset: CGFloat = 0
+        if swipeDirection == .right {
+            startOffset = swipeOpenWidth
+        } else if swipeDirection == .left {
+            startOffset = -swipeOpenWidth
+        }
+        
+        let newOffset = startOffset + horizontal
+        
+        // Clamp to max swipe range in both directions
+        dragOffset = max(-swipeOpenWidth - 40, min(newOffset, swipeOpenWidth + 40))
+    }
+    
+    private func handleDragEnded(_ value: DragGesture.Value) {
+        let velocity = value.predictedEndTranslation.width - value.translation.width
+        
+        // Determine if we should open right (Archive)
+        let shouldOpenRight = dragOffset > swipeThreshold / 2 || (dragOffset > 0 && velocity > 100)
+        
+        // Determine if we should open left (Edit)
+        let shouldOpenLeft = dragOffset < -swipeThreshold / 2 || (dragOffset < 0 && velocity < -100)
+        
+        if shouldOpenRight && swipeDirection != .right {
+            // Snap open right with haptic feedback
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = swipeOpenWidth
+                swipeDirection = .right
+            }
+        } else if shouldOpenLeft && swipeDirection != .left {
+            // Snap open left with haptic feedback
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+            
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = -swipeOpenWidth
+                swipeDirection = .left
+            }
+        } else if !shouldOpenRight && !shouldOpenLeft {
+            // Snap closed
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = 0
+                swipeDirection = .none
+            }
+        } else if swipeDirection == .right {
+            // Keep right open
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = swipeOpenWidth
+            }
+        } else if swipeDirection == .left {
+            // Keep left open
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = -swipeOpenWidth
+            }
+        }
     }
     
     private var headerRow: some View {
@@ -887,6 +1178,191 @@ private struct HabitCardView: View {
                 return ButtonPalette(fillColor: deepGreen)
             }
         }
+    }
+}
+
+// MARK: - Habit Filters Model
+
+struct HabitFilters: Equatable {
+    var habitType: HabitType?
+    var priority: Priority?
+    var category: String?
+    
+    enum HabitType: String, CaseIterable {
+        case build = "build"
+        case breakHabit = "break"
+        
+        var displayName: String {
+            switch self {
+            case .build: return "Build"
+            case .breakHabit: return "Break"
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .build: return "arrow.up.circle.fill"
+            case .breakHabit: return "arrow.down.circle.fill"
+            }
+        }
+        
+        var color: Color {
+            switch self {
+            case .build: return .green
+            case .breakHabit: return .red
+            }
+        }
+    }
+    
+    enum Priority: String, CaseIterable {
+        case high = "high"
+        case medium = "medium"
+        case low = "low"
+        
+        var displayName: String { rawValue.capitalized }
+        
+        var color: Color {
+            switch self {
+            case .high: return .red
+            case .medium: return .orange
+            case .low: return .blue
+            }
+        }
+    }
+    
+    var hasActiveFilters: Bool {
+        habitType != nil || priority != nil || (category != nil && !category!.isEmpty)
+    }
+}
+
+// MARK: - Filter Sheet
+
+private struct DailyHabitsFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.injected) private var container: DIContainer
+    
+    @Binding var filters: HabitFilters
+    let onUnarchive: (DailyHabitDTO) -> Void
+    
+    @State private var archivedHabits: [DailyHabitDTO] = []
+    @State private var isLoadingArchived = false
+    @State private var isArchivedExpanded = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                // Filters Section
+                Section {
+                    Picker("Habit Type", selection: $filters.habitType) {
+                        Text("All").tag(HabitFilters.HabitType?.none)
+                        ForEach(HabitFilters.HabitType.allCases, id: \.self) { type in
+                            Label(type.displayName, systemImage: type.icon)
+                                .tag(HabitFilters.HabitType?.some(type))
+                        }
+                    }
+                    
+                    Picker("Priority", selection: $filters.priority) {
+                        Text("All").tag(HabitFilters.Priority?.none)
+                        ForEach(HabitFilters.Priority.allCases, id: \.self) { priority in
+                            Text(priority.displayName)
+                                .tag(HabitFilters.Priority?.some(priority))
+                        }
+                    }
+                } header: {
+                    Text("Filter By")
+                } footer: {
+                    if filters.hasActiveFilters {
+                        Button("Clear All Filters") {
+                            filters = HabitFilters()
+                        }
+                    }
+                }
+                
+                // Archived Habits Section
+                Section {
+                    DisclosureGroup(isExpanded: $isArchivedExpanded) {
+                        if isLoadingArchived {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                        } else if archivedHabits.isEmpty {
+                            ContentUnavailableView {
+                                Label("No Archived Habits", systemImage: "archivebox")
+                            } description: {
+                                Text("Archived habits will appear here")
+                            }
+                        } else {
+                            ForEach(archivedHabits) { habit in
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(habit.name)
+                                        
+                                        HStack(spacing: 4) {
+                                            Image(systemName: (habit.isPositive ?? true) ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                                                .foregroundStyle((habit.isPositive ?? true) ? .green : .red)
+                                            
+                                            Text((habit.isPositive ?? true) ? "Build" : "Break")
+                                            
+                                            if let priority = habit.priority {
+                                                Text("•")
+                                                Text(priority.capitalized)
+                                            }
+                                        }
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Button("Restore") {
+                                        unarchiveHabit(habit)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Archived Habits", systemImage: "archivebox.fill")
+                    }
+                    .onChange(of: isArchivedExpanded) { _, expanded in
+                        if expanded && archivedHabits.isEmpty {
+                            loadArchivedHabits()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func loadArchivedHabits() {
+        isLoadingArchived = true
+        
+        _Concurrency.Task {
+            let habits = await container.interactors.habitsInteractor.loadArchivedHabits()
+            await MainActor.run {
+                archivedHabits = habits
+                isLoadingArchived = false
+            }
+        }
+    }
+    
+    private func unarchiveHabit(_ habit: DailyHabitDTO) {
+        withAnimation {
+            archivedHabits.removeAll { $0.id == habit.id }
+        }
+        onUnarchive(habit)
     }
 }
 

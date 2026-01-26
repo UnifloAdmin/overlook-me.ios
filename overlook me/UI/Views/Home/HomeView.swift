@@ -9,6 +9,7 @@ struct HomeView: View {
     @Binding var path: NavigationPath
     @EnvironmentObject private var tabBar: TabBarStyleStore
     @State private var isDetentSheetPresented = false
+    @State private var transactionsViewModel = TransactionsViewModel()
     
     var body: some View {
         NavigationStack(path: $path) {
@@ -41,23 +42,13 @@ struct HomeView: View {
     }
     
     private var landingView: some View {
-        ZStack {
-            Color(.systemBackground)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                TimeOfDayGreetingContainer(onArrowTap: {
-                    isDetentSheetPresented = true
-                })
-                
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 70)  // Manual padding: status bar (~47) + spacing (23)
-            .padding(.bottom, 24)
-            .safeAreaPadding(.top, 0)
-        }
-        .ignoresSafeArea(edges: .top)
+        AdaptiveHomeDashboard(
+            onTasksTap: { tabBar.config = .tasks },
+            onHabitsTap: { tabBar.config = .dailyHabits },
+            onSpendingTap: { path.append(SideNavRoute.financeDashboard) },
+            onScheduleTap: { /* TODO: Add daily planning route */ },
+            onBudgetsTap: { path.append(SideNavRoute.budgets) }
+        )
         .sheet(isPresented: $isDetentSheetPresented) {
             DetentBottomSheetView()
         }
@@ -70,6 +61,11 @@ struct HomeView: View {
             landingView
                 .tabBarConfig(.default)
                 .toolbar(.hidden, for: .navigationBar)
+        case .weeklyInsights:
+            // TODO: Create WeeklyInsightsView
+            Text("Weekly Insights")
+                .tabBarConfig(.default)
+                .toolbar(.visible, for: .navigationBar)
             
         case .financeDashboard:
             FinanceDashboardView()
@@ -79,8 +75,12 @@ struct HomeView: View {
             BankAccountsView()
                 .tabBarConfig(.finance)
                 .toolbar(.visible, for: .navigationBar)
+        case .trends:
+            TrendsView()
+                .tabBarConfig(.finance)
+                .toolbar(.visible, for: .navigationBar)
         case .transactions:
-            TransactionsView()
+            TransactionsView(viewModel: transactionsViewModel, tab: .analytics)
                 .tabBarConfig(.finance)
                 .toolbar(.visible, for: .navigationBar)
         case .budgets:
@@ -109,6 +109,20 @@ struct HomeView: View {
             // This destination should not be reached, but kept for safety
             EmptyView()
             
+        case .healthDashboard:
+            HealthView()
+                .tabBarConfig(.health)
+                .toolbar(.visible, for: .navigationBar)
+        case .healthInsights:
+            HealthInsightsView()
+                .tabBarConfig(.health)
+                .toolbar(.visible, for: .navigationBar)
+        case .fitness:
+            // TODO: Create FitnessView
+            Text("Fitness")
+                .tabBarConfig(.health)
+                .toolbar(.visible, for: .navigationBar)
+            
         case .mySubscriptions:
             RecurringPaymentsView()
                 .tabBarConfig(.subscriptions)
@@ -116,6 +130,16 @@ struct HomeView: View {
         case .managePlan:
             ManagePlanView()
                 .tabBarConfig(.subscriptions)
+                .toolbar(.visible, for: .navigationBar)
+        case .notificationManage:
+            // TODO: Create NotificationManageView
+            Text("Notifications")
+                .tabBarConfig(.default)
+                .toolbar(.visible, for: .navigationBar)
+        case .friendCircle:
+            // TODO: Create FriendCircleView
+            Text("My Friend Circle")
+                .tabBarConfig(.default)
                 .toolbar(.visible, for: .navigationBar)
         }
     }

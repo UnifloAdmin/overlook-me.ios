@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F92F00F72F27318700E294E8 /* LinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = F92F00F62F27318700E294E8 /* LinkKit */; };
 		F9A1B2C3D4E5F6789012345E /* PomodoroLiveActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F9A1B2C3D4E5F67890123457 /* PomodoroLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -99,6 +100,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F92F00F72F27318700E294E8 /* LinkKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -133,6 +135,7 @@
 				F9A1B2C3D4E5F67890123458 /* PomodoroLiveActivity */,
 				F90E94BD2F10418A00FEE4A2 /* overlook meTests */,
 				F90E94C72F10418A00FEE4A2 /* overlook meUITests */,
+				F92F00F52F27318700E294E8 /* Frameworks */,
 				F90E94AA2F10418A00FEE4A2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -146,6 +149,13 @@
 				F90E94C42F10418A00FEE4A2 /* overlook meUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		F92F00F52F27318700E294E8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -169,6 +179,7 @@
 			);
 			name = "overlook me";
 			packageProductDependencies = (
+				F92F00F62F27318700E294E8 /* LinkKit */,
 			);
 			productName = "overlook me";
 			productReference = F90E94A92F10418A00FEE4A2 /* overlook me.app */;
@@ -277,6 +288,9 @@
 			);
 			mainGroup = F90E94A02F10418A00FEE4A2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F92F00F42F272C9200E294E8 /* XCRemoteSwiftPackageReference "plaid-link-ios-spm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F90E94AA2F10418A00FEE4A2 /* Products */;
 			projectDirPath = "";
@@ -379,9 +393,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "overlook me/Info.plist";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Overlook Me uses Health data to personalize habit insights and progress.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Overlook Me writes selected Health metrics to keep your daily habit tracking in sync.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Use Face ID to unlock the app.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to your sleep data to show your weekly sleep insights.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to update your health data.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Location access lets us show your current weather in the daily overview.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -419,9 +435,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "overlook me/Info.plist";
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "Overlook Me uses Health data to personalize habit insights and progress.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Overlook Me writes selected Health metrics to keep your daily habit tracking in sync.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Use Face ID to unlock the app.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need access to your sleep data to show your weekly sleep insights.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need access to update your health data.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Location access lets us show your current weather in the daily overview.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -748,6 +766,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F92F00F42F272C9200E294E8 /* XCRemoteSwiftPackageReference "plaid-link-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/plaid/plaid-link-ios-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F92F00F62F27318700E294E8 /* LinkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F92F00F42F272C9200E294E8 /* XCRemoteSwiftPackageReference "plaid-link-ios-spm" */;
+			productName = LinkKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F90E94A12F10418A00FEE4A2 /* Project object */;
 }
