@@ -14,10 +14,10 @@ struct TabBarConfiguration: Equatable {
     var preserveTrailingSlot: Bool = false
     
     static let `default` = TabBarConfiguration(
-        home: .init(title: "home", systemImage: "house.fill"),
-        explore: .init(title: "Focus", systemImage: "safari.fill"),
-        alerts: .init(title: "health", systemImage: "bell.fill"),
-        messages: .init(title: "finances", systemImage: "dollarsign.circle.fill")
+        home: .init(title: "Home", systemImage: "house.fill"),
+        explore: .init(title: "Today", systemImage: "calendar"),
+        alerts: nil,
+        messages: nil
     )
     
     static let finance = TabBarConfiguration(
@@ -63,6 +63,13 @@ struct TabBarConfiguration: Equatable {
         messages: nil
     )
     
+    static let notifications = TabBarConfiguration(
+        home: .init(title: "Notifications", systemImage: "bell.fill"),
+        explore: .init(title: "Devices", systemImage: "laptopcomputer.and.iphone"),
+        alerts: nil,
+        messages: nil
+    )
+    
     static let subscriptions = TabBarConfiguration(
         home: .init(title: "Home", systemImage: "house.fill"),
         explore: .init(title: "Plans", systemImage: "crown"),
@@ -71,10 +78,10 @@ struct TabBarConfiguration: Equatable {
     )
     
     static let health = TabBarConfiguration(
-        home: .init(title: "Insights", systemImage: "chart.line.uptrend.xyaxis"),
-        explore: .init(title: "Sleep", systemImage: "bed.double.fill"),
-        alerts: .init(title: "Fitness", systemImage: "figure.run"),
-        messages: .init(title: "Heart", systemImage: "heart.fill")
+        home: .init(title: "Fitness", systemImage: "figure.run"),
+        explore: .init(title: "Trends", systemImage: "chart.bar.xaxis"),
+        alerts: nil,
+        messages: nil
     )
 }
 

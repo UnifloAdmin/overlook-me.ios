@@ -14,7 +14,6 @@ struct overlook_meApp: App {
     private let environment: AppEnvironment
     
     init() {
-        // Print API configuration on app launch for debugging
         APIConfiguration.printConfiguration()
         self.environment = Self.bootstrap()
     }
@@ -23,10 +22,6 @@ struct overlook_meApp: App {
         WindowGroup {
             RootView()
                 .environment(\.injected, environment.container)
-                .task {
-                    // Check authentication on app launch
-                    await environment.container.interactors.authInteractor.checkAuthentication()
-                }
         }
     }
     
@@ -54,6 +49,7 @@ struct RootView: View {
     @State private var isBiometricUnlocked = false
     @State private var isBiometricAvailable = true
     @State private var biometricErrorMessage: String?
+    @State private var hasRefreshedSession = false
     @AppStorage("isFaceIdDisabled") private var isFaceIdDisabled = false
     
     var body: some View {
@@ -66,12 +62,20 @@ struct RootView: View {
                 BiometricLockView(
                     errorMessage: biometricErrorMessage,
                     isBiometricAvailable: isBiometricAvailable,
-                    onRetry: authenticateOnLaunch
+                    onRetry: { authenticateWithBiometrics() }
                 )
             }
         }
         .task {
-            authenticateOnLaunch()
+            authenticateWithBiometrics()
+        }
+        .onChange(of: isBiometricUnlocked) { _, unlocked in
+            if unlocked && !hasRefreshedSession {
+                hasRefreshedSession = true
+                _Concurrency.Task {
+                    await container.interactors.authInteractor.checkAuthentication()
+                }
+            }
         }
         .onChange(of: isFaceIdDisabled) { _, newValue in
             if newValue {
@@ -79,12 +83,13 @@ struct RootView: View {
                 biometricErrorMessage = nil
             } else {
                 isBiometricUnlocked = false
-                authenticateOnLaunch()
+                hasRefreshedSession = false
+                authenticateWithBiometrics()
             }
         }
     }
     
-    private func authenticateOnLaunch() {
+    private func authenticateWithBiometrics() {
         guard !isBiometricUnlocked else { return }
         guard !isFaceIdDisabled else {
             isBiometricUnlocked = true
@@ -172,7 +177,7 @@ extension DIContainer {
         appState.state.auth.isAuthenticated = true
         appState.state.auth.user = User(
             id: "preview_user",
-            oauthId: "auth0|preview",
+            oauthId: "preview_user",
             email: "user@example.com",
             name: "Preview User",
             picture: nil,

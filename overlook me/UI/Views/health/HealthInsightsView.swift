@@ -1,498 +1,606 @@
-//
-//  HealthInsightsView.swift
-//  overlook me
-//
-//  Created by Naresh Chandra on 1/15/26.
-//
-
 import SwiftUI
 import HealthKit
-import Combine
 import Charts
 
 struct HealthInsightsView: View {
-    @StateObject private var healthKitManager = HealthKitManager()
-    
+    @ObservedObject private var health = HealthKitService.shared
+    @State private var hasRequestedAuth = false
+    @State private var appeared = false
+    @State private var scoreAnimated = false
+
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(.systemGroupedBackground)
-                .ignoresSafeArea()
-            
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
-                    sleepContainer
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 20) {
+                if health.isLoading && health.lastUpdated == nil {
+                    loadingView
+                } else {
+                    wellnessScoreCard
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 20)
+
+                    atAGlance
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 16)
+
+                    sleepContent
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 12)
+
+                    heartContent
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 10)
+
+                    hydrationContent
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 120)
-                .padding(.bottom, 24)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 100)
         }
-        .ignoresSafeArea(edges: .top)
-        .navigationTitle("Health Insights")
-        .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+        .navigationTitle("Health")
+        .navigationBarTitleDisplayMode(.large)
         .task {
-            await healthKitManager.requestAuthorization()
-            await healthKitManager.fetchWeeklySleepData()
-            await healthKitManager.fetchMonthlySleepData()
+            guard !hasRequestedAuth else { return }
+            hasRequestedAuth = true
+            let authorized = await health.requestAuthorization()
+            if authorized { await health.fetchAllHealthData() }
+            withAnimation(.spring(duration: 0.5, bounce: 0.15)) { appeared = true }
+            withAnimation(.spring(duration: 1.2, bounce: 0.1).delay(0.3)) { scoreAnimated = true }
         }
+        .refreshable { await health.fetchAllHealthData() }
     }
 
-    private var sleepContainer: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Sleep")
-                        .font(.headline)
-                    Text("Last 7 days overview")
-                        .font(.subheadline)
+    // MARK: - Loading
+
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            Spacer().frame(height: 80)
+            ProgressView()
+                .scaleEffect(1.2)
+            Text("Loading your health data...")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+
+    // MARK: - Wellness Score
+
+    private var wellnessScoreCard: some View {
+        HStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .stroke(Color.purple.opacity(0.12), lineWidth: 12)
+                Circle()
+                    .trim(from: 0, to: scoreAnimated ? Double(health.wellnessScore) / 100.0 : 0)
+                    .stroke(
+                        AngularGradient(
+                            colors: [.purple, .blue, .cyan, .purple],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 1) {
+                    Text("\(health.wellnessScore)")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                    Text("/ 100")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 88, height: 88)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(wellnessLabel)
+                    .font(.headline)
+                Text(wellnessSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+    }
+
+    private var wellnessLabel: String {
+        let s = health.wellnessScore
+        if s >= 85 { return "Excellent" }
+        if s >= 70 { return "Good" }
+        if s >= 50 { return "Fair" }
+        if s > 0 { return "Needs Attention" }
+        return "No Data"
+    }
+
+    private var wellnessSummary: String {
+        let s = health.wellnessScore
+        if s >= 85 { return "You're crushing your health goals. Keep up the great work!" }
+        if s >= 70 { return "Solid day so far. A little more activity could push you higher." }
+        if s >= 50 { return "Decent progress. Focus on hydration and movement." }
+        if s > 0 { return "Room for improvement. Try hitting one more goal today." }
+        return "Start tracking to see your wellness score."
+    }
+
+    // MARK: - At a Glance
+
+    private var atAGlance: some View {
+        VStack(spacing: 0) {
+            MetricRow(
+                icon: "moon.stars.fill", iconColor: .green, label: "Sleep",
+                value: health.sleepData.hours > 0 ? health.sleepData.formattedHours : "--",
+                detail: health.sleepData.hours > 0 ? "\(health.sleepData.quality)% quality" : "Last night",
+                streak: health.sleepStreak
+            )
+            Divider().padding(.leading, 52)
+            MetricRow(
+                icon: "heart.fill", iconColor: .red, label: "Heart Rate",
+                value: health.heartData.current > 0 ? "\(health.heartData.current) bpm" : "--",
+                detail: health.heartData.resting > 0 ? "Resting \(health.heartData.resting)" : "Current",
+                streak: 0
+            )
+            Divider().padding(.leading, 52)
+            MetricRow(
+                icon: "drop.fill", iconColor: .blue, label: "Water",
+                value: "\(health.waterIntake.current) / \(health.waterIntake.goal)",
+                detail: health.waterIntake.current >= health.waterIntake.goal ? "Goal met" : "\(health.waterIntake.goal - health.waterIntake.current) remaining",
+                streak: health.waterStreak
+            )
+
+            if health.bodyWeight > 0 {
+                Divider().padding(.leading, 52)
+                MetricRow(
+                    icon: "scalemass.fill", iconColor: .pink, label: "Weight",
+                    value: String(format: "%.0f lbs", health.bodyWeight),
+                    detail: "Latest", streak: 0
+                )
+            }
+            if health.mindfulMinutes > 0 {
+                Divider().padding(.leading, 52)
+                MetricRow(
+                    icon: "brain.head.profile.fill", iconColor: .teal, label: "Mindfulness",
+                    value: "\(health.mindfulMinutes) min",
+                    detail: "Today", streak: 0
+                )
+            }
+        }
+        .padding(.vertical, 4)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+    }
+
+    // MARK: - Sleep
+
+    private var sleepContent: some View {
+        VStack(spacing: 16) {
+            if health.sleepData.hours > 0 {
+                VStack(spacing: 16) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(health.sleepData.formattedHours)
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                            .foregroundStyle(.green)
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("\(health.sleepData.quality)%")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(health.sleepData.quality >= 70 ? .green : .orange)
+                            Text("Quality")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    ProgressView(value: Double(health.sleepData.quality), total: 100)
+                        .tint(health.sleepData.quality >= 70 ? .green : .orange)
+                }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+
+                HStack(spacing: 12) {
+                    SleepStageCell(title: "Deep", hours: health.sleepStages.deep, color: .indigo)
+                    SleepStageCell(title: "REM", hours: health.sleepStages.rem, color: .purple)
+                    SleepStageCell(title: "Light", hours: health.sleepStages.light, color: .cyan)
+                    SleepStageCell(title: "Awake", hours: health.sleepStages.awake, color: .orange)
+                }
+                .padding(14)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+            } else {
+                EmptyDataRow(icon: "moon.zzz", message: "No sleep data. Wear your Apple Watch to bed.")
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+            }
+
+            if !health.weeklySleep.isEmpty {
+                VStack(spacing: 10) {
+                    Chart(health.weeklySleep) { day in
+                        BarMark(x: .value("Day", day.label), y: .value("Hours", day.value))
+                            .foregroundStyle(day.isToday ? .green : .green.opacity(0.4))
+                            .cornerRadius(6)
+                    }
+                    .chartYScale(domain: 0...12)
+                    .frame(height: 150)
+
+                    if let best = health.bestSleepDay {
+                        PersonalBestBadge(label: "Best: \(best.label)", value: String(format: "%.1fh", best.value))
+                    }
+                }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Bedtime", systemImage: "moon.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(health.sleepSchedule.avgBedtime)
+                        .font(.title3.weight(.semibold))
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(healthKitManager.averageSleepFormatted)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    Text("avg/night")
+                    Label("Wake up", systemImage: "sun.max.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(health.sleepSchedule.avgWakeTime)
+                        .font(.title3.weight(.semibold))
                 }
             }
+            .padding(16)
+            .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
 
-            if let goal = healthKitManager.sleepGoal {
-                VStack(alignment: .leading, spacing: 8) {
+        }
+    }
+
+    // MARK: - Heart
+
+    private var heartContent: some View {
+        VStack(spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(health.heartData.current > 0 ? "\(health.heartData.current)" : "--")
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .foregroundStyle(.red)
+                Text("bpm")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(16)
+            .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+
+            if health.heartData.resting > 0 || health.heartData.average > 0 || health.heartData.max > 0 {
+                HStack(spacing: 0) {
+                    HeartMetricCell(title: "Resting", value: health.heartData.resting > 0 ? "\(health.heartData.resting)" : "--", color: .green)
+                    Divider().frame(height: 36)
+                    HeartMetricCell(title: "Average", value: health.heartData.average > 0 ? "\(health.heartData.average)" : "--", color: .yellow)
+                    Divider().frame(height: 36)
+                    HeartMetricCell(title: "Peak", value: health.heartData.max > 0 ? "\(health.heartData.max)" : "--", color: .red)
+                }
+                .padding(.vertical, 14)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+            }
+
+            if !health.heartRateHistory.isEmpty {
+                Chart(health.heartRateHistory) { point in
+                    LineMark(x: .value("Time", point.time), y: .value("BPM", point.value))
+                        .foregroundStyle(.red)
+                        .interpolationMethod(.catmullRom)
+                    AreaMark(x: .value("Time", point.time), y: .value("BPM", point.value))
+                        .foregroundStyle(.red.opacity(0.08))
+                }
+                .chartYScale(domain: 40...180)
+                .frame(height: 150)
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+            }
+
+            if health.hrvData.current > 0 {
+                VStack(spacing: 10) {
                     HStack {
-                        Text("Goal")
-                            .font(.subheadline)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(health.hrvData.current) ms")
+                                .font(.title2.weight(.bold))
+                            Text("HRV")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Text(formatHours(goal))
-                            .font(.subheadline)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(health.hrvData.status)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(hrvColor)
+                            Text("Baseline: \(health.hrvData.baseline) ms")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text("Higher HRV generally indicates better recovery and lower stress.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+            }
+
+            if health.vo2Max > 0 {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(String(format: "%.1f", health.vo2Max))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(.cyan)
+                        Text("VO₂ max · mL/kg·min")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    ProgressView(value: Double(healthKitManager.goalProgress), total: 100)
-                        .tint(.purple)
+                    Spacer()
+                    Text(health.cardioFitnessLevel)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(fitnessLevelColor.opacity(0.15), in: Capsule())
+                        .foregroundStyle(fitnessLevelColor)
                 }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
             }
 
-            HStack(spacing: 12) {
-                averageCard(
-                    title: "Last week avg",
-                    value: averageLabel(healthKitManager.averageSleep),
-                    data: healthKitManager.weeklySleepData,
-                    accent: .purple
-                )
-                averageCard(
-                    title: "Monthly avg",
-                    value: averageLabel(healthKitManager.monthlyAverage),
-                    data: healthKitManager.monthlySleepData,
-                    accent: .blue
-                )
+            if health.respiratoryRate > 0 {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(String(format: "%.0f", health.respiratoryRate))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(.mint)
+                    Text("breaths/min")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(respiratoryLabel)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(respiratoryColor)
+                }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
             }
 
-            HStack(spacing: 12) {
-                miniStat(title: "Best", value: bestNightLabel)
-                miniStat(title: "Lowest", value: worstNightLabel)
-                miniStat(title: "Consistency", value: consistencyLabel)
+        }
+    }
+
+    private var fitnessLevelColor: Color {
+        switch health.cardioFitnessLevel {
+        case "High": return .green
+        case "Above Average": return .cyan
+        case "Average": return .yellow
+        default: return .orange
+        }
+    }
+
+    private var respiratoryLabel: String {
+        let r = health.respiratoryRate
+        if r >= 12 && r <= 20 { return "Normal" }
+        if r < 12 { return "Low" }
+        return "Elevated"
+    }
+
+    private var respiratoryColor: Color {
+        let r = health.respiratoryRate
+        if r >= 12 && r <= 20 { return .green }
+        return .orange
+    }
+
+    private var hrvColor: Color {
+        switch health.hrvData.statusColor {
+        case "green": return .green
+        case "orange": return .orange
+        default: return .secondary
+        }
+    }
+
+    // MARK: - Hydration
+
+    private var hydrationContent: some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(health.waterIntake.current)")
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(.blue)
+                    Text("/ \(health.waterIntake.goal) glasses")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+
+                HStack(spacing: 6) {
+                    ForEach(1...8, id: \.self) { index in
+                        Image(systemName: "drop.fill")
+                            .font(.title3)
+                            .foregroundStyle(index <= health.waterIntake.current ? .blue : Color(.systemGray5))
+                            .scaleEffect(index <= health.waterIntake.current ? 1.0 : 0.85)
+                            .animation(.spring(duration: 0.3, bounce: 0.4).delay(Double(index) * 0.03), value: health.waterIntake.current)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+
+                ProgressView(value: Double(health.waterIntake.current), total: Double(health.waterIntake.goal))
+                    .tint(.blue)
+
+                Button {
+                    _Concurrency.Task { _ = await health.logWater() }
+                } label: {
+                    Label("Add Glass", systemImage: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.glass)
+                .tint(.blue)
+            }
+            .padding(16)
+            .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+
+            if !health.weeklyWater.isEmpty {
+                VStack(spacing: 10) {
+                    Chart(health.weeklyWater) { day in
+                        BarMark(x: .value("Day", day.label), y: .value("Glasses", day.value))
+                            .foregroundStyle(day.value >= 8 ? .blue : .blue.opacity(0.4))
+                            .cornerRadius(6)
+                    }
+                    .chartYScale(domain: 0...12)
+                    .frame(height: 140)
+
+                    HStack {
+                        let avg = health.weeklyWater.isEmpty ? 0 :
+                            Int(health.weeklyWater.map(\.value).reduce(0, +)) / health.weeklyWater.count
+                        let met = health.weeklyWater.filter { $0.value >= 8 }.count
+                        Text("Avg: \(avg) glasses/day")
+                        Spacer()
+                        Text("\(met)/\(health.weeklyWater.count) days met")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                }
+                .padding(16)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
             }
 
-            Chart(healthKitManager.weeklySleepData) { day in
-                BarMark(
-                    x: .value("Day", day.dayLabel),
-                    y: .value("Hours", day.hours)
-                )
-                .foregroundStyle(day.isToday ? Color.purple : Color.accentColor)
-                .cornerRadius(6)
-            }
-            .chartYScale(domain: 0...12)
-            .frame(height: 170)
-            .accessibilityLabel("Sleep hours chart for the last 7 days")
+        }
+    }
+}
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Insights")
+// MARK: - Metric Row
+
+private struct MetricRow: View {
+    let icon: String
+    let iconColor: Color
+    let label: String
+    let value: String
+    let detail: String
+    let streak: Int
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundStyle(iconColor)
+                .frame(width: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 8) {
-                    insightRow(text: goalInsightText)
-                    insightRow(text: variabilityInsightText)
-                    insightRow(text: trendInsightText)
+                Text(value)
+                    .font(.headline)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if streak > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "flame.fill")
+                            .font(.caption2)
+                        Text("\(streak)d")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(.orange)
                 }
             }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.systemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(0.6), lineWidth: 1)
-        )
-    }
-    
-    private func formatHours(_ hours: Double) -> String {
-        let h = Int(hours)
-        let m = Int((hours - Double(h)) * 60)
-        return "\(h)h\(m > 0 ? " \(m)m" : "")"
-    }
-
-    private func averageLabel(_ hours: Double) -> String {
-        guard hours > 0 else { return "—" }
-        return formatHours(hours)
-    }
-
-    private func miniStat(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(.separator).opacity(0.45), lineWidth: 1)
-        )
-    }
-
-    private func averageCard(title: String, value: String, data: [SleepDayData], accent: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            Chart(data) { day in
-                BarMark(
-                    x: .value("Date", day.date),
-                    y: .value("Hours", day.hours)
-                )
-                .foregroundStyle(accent)
-                .cornerRadius(5)
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .frame(height: 70)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(.separator).opacity(0.45), lineWidth: 1)
-        )
-    }
-
-    private func insightRow(text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(Color.purple)
-                .frame(width: 6, height: 6)
-                .padding(.top, 6)
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.primary)
-        }
-    }
-
-    private var bestNightLabel: String {
-        guard let best = healthKitManager.weeklySleepData.max(by: { $0.hours < $1.hours }) else {
-            return "—"
-        }
-        return "\(best.dayLabel) \(formatHours(best.hours))"
-    }
-
-    private var worstNightLabel: String {
-        guard let worst = healthKitManager.weeklySleepData.min(by: { $0.hours < $1.hours }) else {
-            return "—"
-        }
-        return "\(worst.dayLabel) \(formatHours(worst.hours))"
-    }
-
-    private var consistencyLabel: String {
-        let hours = healthKitManager.weeklySleepData.map(\.hours)
-        guard !hours.isEmpty else { return "—" }
-        let mean = hours.reduce(0, +) / Double(hours.count)
-        let variance = hours.map { pow($0 - mean, 2) }.reduce(0, +) / Double(hours.count)
-        let stdDev = sqrt(variance)
-        let score = max(0, min(100, Int(100 - (stdDev * 12))))
-        return "\(score)%"
-    }
-
-    private var goalInsightText: String {
-        guard let goal = healthKitManager.sleepGoal else {
-            return "Set a sleep goal to track progress more closely."
-        }
-        let average = healthKitManager.averageSleep
-        if average >= goal {
-            return "You met your goal on average this week."
-        }
-        let gap = max(0, goal - average)
-        return "You are \(formatHours(gap)) below your goal on average."
-    }
-
-    private var variabilityInsightText: String {
-        let hours = healthKitManager.weeklySleepData.map(\.hours)
-        guard hours.count >= 3 else {
-            return "Log a few more nights to see consistency."
-        }
-        let mean = hours.reduce(0, +) / Double(hours.count)
-        let variance = hours.map { pow($0 - mean, 2) }.reduce(0, +) / Double(hours.count)
-        let stdDev = sqrt(variance)
-        if stdDev <= 0.6 {
-            return "Your sleep schedule is very consistent."
-        } else if stdDev <= 1.2 {
-            return "Your sleep is moderately consistent."
-        } else {
-            return "Your sleep varies a lot. Aim for steadier bedtimes."
-        }
-    }
-
-    private var trendInsightText: String {
-        let hours = healthKitManager.weeklySleepData.map(\.hours)
-        guard hours.count >= 4 else {
-            return "Keep tracking to spot weekly trends."
-        }
-        let firstHalf = hours.prefix(3).reduce(0, +) / 3
-        let secondHalf = hours.suffix(3).reduce(0, +) / 3
-        if secondHalf > firstHalf + 0.3 {
-            return "Sleep improved toward the end of the week."
-        } else if secondHalf + 0.3 < firstHalf {
-            return "Sleep dipped toward the end of the week."
-        } else {
-            return "Sleep was steady throughout the week."
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 
-// MARK: - HealthKit Manager
+// MARK: - Sleep Stage Cell
 
-@MainActor
-class HealthKitManager: ObservableObject {
-    @Published var weeklySleepData: [SleepDayData] = []
-    @Published var monthlySleepData: [SleepDayData] = []
-    @Published var averageSleep: Double = 0
-    @Published var sleepGoal: Double? = 8.0 // 8 hours goal
-    
-    private let healthStore = HKHealthStore()
-    
-    var averageSleepFormatted: String {
-        let h = Int(averageSleep)
-        let m = Int((averageSleep - Double(h)) * 60)
-        return "\(h)h \(m)m"
-    }
-    
-    var goalProgress: Int {
-        guard let goal = sleepGoal else { return 0 }
-        return min(100, Int((averageSleep / goal) * 100))
-    }
-
-    var monthlyAverage: Double {
-        averageHours(for: monthlySleepData)
-    }
-    
-    func requestAuthorization() async {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            applyWeeklyMockData()
-            applyMonthlyMockData()
-            return
-        }
-        
-        let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
-        
-        do {
-            try await healthStore.requestAuthorization(toShare: [], read: [sleepType])
-        } catch {
-            print("HealthKit authorization failed: \(error)")
-            applyWeeklyMockData()
-            applyMonthlyMockData()
-        }
-    }
-    
-    func fetchWeeklySleepData() async {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            applyWeeklyMockData()
-            return
-        }
-        
-        let sleepType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)!
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Get last 7 days
-        guard let startDate = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) else {
-            applyWeeklyMockData()
-            return
-        }
-        
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
-        
-        let query = HKSampleQuery(sampleType: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { [weak self] _, samples, error in
-            guard let samples = samples as? [HKCategorySample] else {
-                _Concurrency.Task { @MainActor in
-                    self?.applyWeeklyMockData()
-                }
-                return
-            }
-            
-            _Concurrency.Task { @MainActor in
-                self?.processWeeklySamples(samples, days: 7)
-            }
-        }
-        
-        healthStore.execute(query)
-    }
-
-    func fetchMonthlySleepData() async {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            applyMonthlyMockData()
-            return
-        }
-
-        let sleepType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)!
-        let calendar = Calendar.current
-        let now = Date()
-
-        guard let startDate = calendar.date(byAdding: .day, value: -29, to: calendar.startOfDay(for: now)) else {
-            applyMonthlyMockData()
-            return
-        }
-
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
-
-        let query = HKSampleQuery(sampleType: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { [weak self] _, samples, error in
-            guard let samples = samples as? [HKCategorySample] else {
-                _Concurrency.Task { @MainActor in
-                    self?.applyMonthlyMockData()
-                }
-                return
-            }
-
-            _Concurrency.Task { @MainActor in
-                self?.processMonthlySamples(samples, days: 30)
-            }
-        }
-
-        healthStore.execute(query)
-    }
-
-    private func processWeeklySamples(_ samples: [HKCategorySample], days: Int) {
-        let data = buildSleepData(samples: samples, days: days)
-        weeklySleepData = data
-        averageSleep = averageHours(for: data)
-
-        if averageSleep == 0 {
-            applyWeeklyMockData()
-        }
-    }
-
-    private func processMonthlySamples(_ samples: [HKCategorySample], days: Int) {
-        let data = buildSleepData(samples: samples, days: days)
-        monthlySleepData = data
-
-        if monthlyAverage == 0 {
-            applyMonthlyMockData()
-        }
-    }
-
-    private func buildSleepData(samples: [HKCategorySample], days: Int) -> [SleepDayData] {
-        let calendar = Calendar.current
-        var dailySleep: [Date: TimeInterval] = [:]
-        
-        // Filter for asleep samples only
-        let asleepSamples = samples.filter { sample in
-            sample.value == HKCategoryValueSleepAnalysis.asleep.rawValue ||
-            sample.value == HKCategoryValueSleepAnalysis.asleepCore.rawValue ||
-            sample.value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue ||
-            sample.value == HKCategoryValueSleepAnalysis.asleepREM.rawValue
-        }
-        
-        // Group by day
-        for sample in asleepSamples {
-            let day = calendar.startOfDay(for: sample.startDate)
-            let duration = sample.endDate.timeIntervalSince(sample.startDate)
-            dailySleep[day, default: 0] += duration
-        }
-        
-        var data: [SleepDayData] = []
-        let today = calendar.startOfDay(for: Date())
-        
-        for i in 0..<days {
-            guard let day = calendar.date(byAdding: .day, value: -(days - 1) + i, to: today) else { continue }
-            let sleepDuration = dailySleep[day] ?? 0
-            let hours = sleepDuration / 3600
-            
-            let dayLabel = calendar.shortWeekdaySymbols[calendar.component(.weekday, from: day) - 1]
-            let isToday = calendar.isDate(day, inSameDayAs: Date())
-            
-            data.append(SleepDayData(
-                date: day,
-                hours: hours,
-                dayLabel: dayLabel,
-                isToday: isToday
-            ))
-        }
-        
-        return data
-    }
-
-    private func averageHours(for data: [SleepDayData]) -> Double {
-        guard !data.isEmpty else { return 0 }
-        return data.map(\.hours).reduce(0, +) / Double(data.count)
-    }
-
-    private func applyWeeklyMockData() {
-        weeklySleepData = mockSleepData(days: 7)
-        averageSleep = averageHours(for: weeklySleepData)
-    }
-
-    private func applyMonthlyMockData() {
-        monthlySleepData = mockSleepData(days: 30)
-    }
-
-    private func mockSleepData(days: Int) -> [SleepDayData] {
-        let calendar = Calendar.current
-        let today = Date()
-        let baseHours: [Double] = [7.2, 6.8, 7.5, 8.1, 6.5, 7.8, 7.3]
-        
-        return (0..<days).compactMap { i in
-            guard let day = calendar.date(byAdding: .day, value: -(days - 1) + i, to: today) else { return nil }
-            let dayLabel = calendar.shortWeekdaySymbols[calendar.component(.weekday, from: day) - 1]
-            let isToday = calendar.isDate(day, inSameDayAs: Date())
-            let base = baseHours[i % baseHours.count]
-            let variation = (i % 4 == 0) ? 0.2 : (i % 5 == 0 ? -0.2 : 0)
-            let hours = max(4.5, min(9.5, base + variation))
-            
-            return SleepDayData(
-                date: day,
-                hours: hours,
-                dayLabel: dayLabel,
-                isToday: isToday
-            )
-        }
-    }
-}
-
-// MARK: - Sleep Day Data
-
-struct SleepDayData: Identifiable {
-    let id = UUID()
-    let date: Date
+private struct SleepStageCell: View {
+    let title: String
     let hours: Double
-    let dayLabel: String
-    let isToday: Bool
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 3)
+                .fill(color)
+                .frame(width: 16, height: 16)
+            Text(String(format: "%.1fh", hours))
+                .font(.subheadline.weight(.semibold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
 }
 
-// MARK: - Preview
+// MARK: - Heart Metric Cell
+
+private struct HeartMetricCell: View {
+    let title: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+            Text(value)
+                .font(.title3.weight(.bold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Personal Best Badge
+
+private struct PersonalBestBadge: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "trophy.fill")
+                .font(.caption2)
+                .foregroundStyle(.yellow)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.caption.weight(.semibold))
+        }
+    }
+}
+
+// MARK: - Empty Data Row
+
+private struct EmptyDataRow: View {
+    let icon: String
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
 
 #Preview {
     NavigationStack {

@@ -28,6 +28,7 @@ struct TransactionsMerchantsView: View {
         Group {
             if viewModel.isLoading && viewModel.merchantSummaries.isEmpty {
                 ProgressView("Analyzing merchants...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.merchantSummaries.isEmpty {
                 ContentUnavailableView(
                     "No Merchants",
@@ -38,20 +39,24 @@ struct TransactionsMerchantsView: View {
                 merchantsList
             }
         }
+        .background(Color(.systemGroupedBackground))
         .searchable(text: $searchText, prompt: "Search merchants")
     }
     
     private var merchantsList: some View {
-        List {
-            summarySection
-            
-            if !recurringMerchants.isEmpty {
-                recurringSection
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                summarySection
+                
+                if !recurringMerchants.isEmpty {
+                    recurringSection
+                }
+                
+                allMerchantsSection
             }
-            
-            allMerchantsSection
+            .padding(.horizontal)
+            .padding(.vertical, 8)
         }
-        .listStyle(.insetGrouped)
         .refreshable {
             await viewModel.loadMerchants(userId: userId)
         }
@@ -60,81 +65,123 @@ struct TransactionsMerchantsView: View {
     // MARK: - Summary Section
     
     private var summarySection: some View {
-        Section {
-            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-                GridRow {
-                    summaryCard(
-                        icon: "storefront",
-                        value: "\(viewModel.merchantSummaries.count)",
-                        label: "Total Merchants"
-                    )
-                    
-                    summaryCard(
-                        icon: "repeat",
-                        value: "\(recurringMerchants.count)",
-                        label: "Recurring"
-                    )
-                }
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                summaryCard(
+                    icon: "storefront.fill",
+                    value: "\(viewModel.merchantSummaries.count)",
+                    label: "Total Merchants",
+                    tint: .blue
+                )
                 
-                if let topMerchant = filteredMerchants.first {
-                    GridRow {
-                        summaryCard(
-                            icon: "crown",
-                            value: topMerchant.name,
-                            label: formatCurrency(topMerchant.totalSpent + topMerchant.totalEarned)
-                        )
-                        .gridCellColumns(2)
-                    }
-                }
+                summaryCard(
+                    icon: "repeat.circle.fill",
+                    value: "\(recurringMerchants.count)",
+                    label: "Recurring",
+                    tint: .purple
+                )
             }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
+            
+            if let topMerchant = filteredMerchants.first {
+                topMerchantCard(merchant: topMerchant)
+            }
         }
     }
     
-    private func summaryCard(icon: String, value: String, label: String) -> some View {
-        GroupBox {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                
-                Text(value)
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Text(label)
+    private func summaryCard(icon: String, value: String, label: String, tint: Color) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(tint)
+            
+            Text(value)
+                .font(.title3.bold())
+            
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+    
+    private func topMerchantCard(merchant: MerchantSummary) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(.yellow.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "crown.fill")
+                    .font(.title3)
+                    .foregroundStyle(.yellow)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Top Merchant")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text(merchant.name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
+            
+            Spacer()
+            
+            Text(formatCurrency(merchant.totalSpent + merchant.totalEarned))
+                .font(.subheadline.monospacedDigit().weight(.semibold))
         }
+        .padding()
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
     
     // MARK: - Recurring Section
     
     private var recurringSection: some View {
-        Section {
-            ForEach(recurringMerchants.prefix(5)) { merchant in
-                MerchantRow(merchant: merchant, showRecurringBadge: false)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "repeat.circle.fill")
+                    .foregroundStyle(.purple)
+                Text("Recurring Merchants")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
             }
-        } header: {
-            Label("Recurring Merchants", systemImage: "repeat")
-        } footer: {
-            Text("Merchants with 3 or more transactions")
+            .padding(.horizontal, 4)
+            
+            VStack(spacing: 8) {
+                ForEach(recurringMerchants.prefix(5)) { merchant in
+                    MerchantRow(merchant: merchant, showRecurringBadge: false)
+                }
+            }
+            
+            Text("Merchants with 3+ transactions")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 4)
         }
     }
     
     // MARK: - All Merchants Section
     
     private var allMerchantsSection: some View {
-        Section {
-            ForEach(filteredMerchants) { merchant in
-                MerchantRow(merchant: merchant, showRecurringBadge: true)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "list.bullet.circle.fill")
+                    .foregroundStyle(.tint)
+                Text("All Merchants")
+                    .font(.subheadline.weight(.semibold))
+                Text("(\(filteredMerchants.count))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
-        } header: {
-            Label("All Merchants (\(filteredMerchants.count))", systemImage: "list.bullet")
+            .padding(.horizontal, 4)
+            
+            VStack(spacing: 8) {
+                ForEach(filteredMerchants) { merchant in
+                    MerchantRow(merchant: merchant, showRecurringBadge: true)
+                }
+            }
         }
     }
     
@@ -150,23 +197,30 @@ private struct MerchantRow: View {
     let showRecurringBadge: Bool
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "storefront")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 32)
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(.tint.opacity(0.12))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "storefront.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.tint)
+                }
                 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
                         Text(merchant.name)
-                            .font(.body)
+                            .font(.subheadline.weight(.medium))
                             .lineLimit(1)
                         
                         if showRecurringBadge && merchant.isRecurring {
-                            Label("Recurring", systemImage: "repeat")
+                            Image(systemName: "repeat")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.purple)
+                                .padding(4)
+                                .background(.purple.opacity(0.12), in: Circle())
                         }
                     }
                     
@@ -178,50 +232,30 @@ private struct MerchantRow: View {
                 Spacer()
             }
             
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Spent")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(formatCurrency(merchant.totalSpent))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.red)
-                }
-                
+            // Stats row
+            HStack(spacing: 0) {
+                statColumn(label: "Spent", value: formatCurrency(merchant.totalSpent), color: .red)
                 Spacer()
-                
-                VStack(alignment: .leading) {
-                    Text("Earned")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(formatCurrency(merchant.totalEarned))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.green)
-                }
-                
+                statColumn(label: "Earned", value: formatCurrency(merchant.totalEarned), color: .green)
                 Spacer()
-                
-                VStack(alignment: .leading) {
-                    Text("Average")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(formatCurrency(merchant.averageTransaction))
-                        .font(.subheadline.monospacedDigit())
-                }
-                
+                statColumn(label: "Average", value: formatCurrency(merchant.averageTransaction), color: .primary)
                 Spacer()
-                
-                VStack(alignment: .trailing) {
-                    Text("Last")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(formatDate(merchant.lastTransactionDate))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                statColumn(label: "Last", value: formatDate(merchant.lastTransactionDate), color: .secondary, alignment: .trailing)
             }
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+    }
+    
+    private func statColumn(label: String, value: String, color: Color, alignment: HorizontalAlignment = .leading) -> some View {
+        VStack(alignment: alignment, spacing: 3) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.medium))
+                .foregroundStyle(color)
+        }
     }
     
     private func formatCurrency(_ value: Double) -> String {

@@ -21,7 +21,7 @@ struct TransactionDTO: Codable, Sendable, Identifiable {
     let name: String?
     let merchantName: String?
     let category: String?
-    let userId: String
+    let userId: String?
     let customCategoryId: Int?
     let notes: String?
     let isExcludedFromBudget: Bool?
@@ -98,6 +98,26 @@ struct DailySpendingDTO: Codable, Sendable, Identifiable {
     let spending: Double
     let income: Double?
     let transactionCount: Int?
+    
+    // Custom decoding to handle date as ISO 8601 DateTime string
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        spending = try container.decode(Double.self, forKey: .spending)
+        income = try container.decodeIfPresent(Double.self, forKey: .income)
+        transactionCount = try container.decodeIfPresent(Int.self, forKey: .transactionCount)
+        
+        // Handle date which comes as ISO 8601 DateTime string from .NET
+        if let dateString = try? container.decode(String.self, forKey: .date) {
+            // Extract just the date portion if it includes time
+            date = String(dateString.prefix(10))
+        } else {
+            date = "unknown"
+        }
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case date, spending, income, transactionCount
+    }
 }
 
 struct DayOfWeekSpendingDTO: Codable, Sendable, Identifiable {
@@ -107,6 +127,26 @@ struct DayOfWeekSpendingDTO: Codable, Sendable, Identifiable {
     let date: String?
     let spending: Double
     let transactions: Int?
+    
+    // Custom decoding to handle date as either String or Date object
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        day = try container.decode(String.self, forKey: .day)
+        dayOfWeek = try container.decode(Int.self, forKey: .dayOfWeek)
+        spending = try container.decode(Double.self, forKey: .spending)
+        transactions = try container.decodeIfPresent(Int.self, forKey: .transactions)
+        
+        // Handle date which may come as ISO string from DateTime
+        if let dateString = try? container.decodeIfPresent(String.self, forKey: .date) {
+            date = dateString
+        } else {
+            date = nil
+        }
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case day, dayOfWeek, date, spending, transactions
+    }
 }
 
 struct PeriodComparisonDTO: Codable, Sendable {
@@ -138,7 +178,7 @@ struct TimeOfDayAnalysisDTO: Codable, Sendable {
     let evening: TimeSlotDTO
     let night: TimeSlotDTO
     let peakSpendingTime: String?
-    let totalAnalyzed: Int?
+    let totalAnalyzed: Double?
 }
 
 struct TimeSlotDTO: Codable, Sendable {

@@ -17,6 +17,7 @@ enum KeychainHelper {
         case refreshToken = "refresh_token"
         case idToken = "id_token"
         case userData = "user_data"
+        case sessionId = "session_id"
     }
     
     // MARK: - Save

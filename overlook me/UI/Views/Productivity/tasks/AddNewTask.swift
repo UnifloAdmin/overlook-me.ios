@@ -3,196 +3,56 @@ import SwiftUI
 struct AddNewTask: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.injected) private var container
-    
-    // Task properties
-    @State private var title: String = ""
-    @State private var description: String = ""
+
+    @State private var title = ""
+    @State private var notes = ""
     @State private var priority: TaskPriority = .medium
-    
-    // Dates and time
-    @State private var hasDueDate: Bool = false
-    @State private var dueDate: Date = Date()
-    
-    // Duration
-    @State private var hasEstimatedDuration: Bool = false
-    @State private var estimatedDurationMinutes: Int = 30
-    
-    // Organization
-    @State private var category: String = ""
-    @State private var project: String = ""
-    @State private var tags: String = ""
-    
-    // Appearance
-    @State private var selectedColor: String = "#007AFF"
-    
-    // Location
-    @State private var hasLocation: Bool = false
-    @State private var location: String = ""
-    
-    // Advanced
-    @State private var isProMode: Bool = false
-    @State private var isFuture: Bool = false
-    @State private var showAdvancedOptions: Bool = false
-    
-    // UI State
-    @State private var isSaving: Bool = false
+
+    @State private var hasDate = false
+    @State private var dueDate = Date()
+    @State private var hasTime = false
+    @State private var dueTime = Date()
+
+    @State private var recurrenceFrequency: RecurrenceFrequency?
+    @State private var recurrenceEndDate: Date?
+    @State private var hasRecurrenceEnd = false
+
+    @State private var hasEstimatedDuration = false
+    @State private var estimatedMinutes = 30
+
+    @State private var category = ""
+    @State private var project = ""
+    @State private var tagsText = ""
+
+    @State private var hasLocation = false
+    @State private var location = ""
+
+    @State private var selectedColor = "#007AFF"
+    @State private var isSaving = false
     @State private var errorMessage: String?
-    
-    // Predefined colors
-    private let colorOptions: [String] = [
-        "#007AFF", "#FF9500", "#FF3B30", "#34C759",
-        "#5856D6", "#FF2D55", "#5AC8FA", "#FFCC00"
-    ]
-    
+    @State private var showAdvanced = false
+
+    @FocusState private var titleFocused: Bool
+
+    private let colors = ["#007AFF", "#FF9500", "#FF3B30", "#34C759", "#5856D6", "#FF2D55", "#5AC8FA", "#FFCC00"]
+
     var body: some View {
         NavigationStack {
             Form {
-                // Required Info Section
-                Section("Required") {
-                    TextField("Task title", text: $title)
-                    TextField("Description", text: $description, axis: .vertical)
-                        .lineLimit(3...6)
-                    Toggle("Due Date", isOn: $hasDueDate)
-                    if hasDueDate {
-                        DatePicker("Due", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Priority")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        
-                        HStack(spacing: 8) {
-                            ForEach([TaskPriority.low, .medium, .high, .critical], id: \.self) { p in
-                                Button {
-                                    priority = p
-                                } label: {
-                                    VStack(spacing: 4) {
-                                        Image(systemName: priorityIcon(p))
-                                            .font(.title3)
-                                        Text(priorityLabel(p))
-                                            .font(.caption2)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.8)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 60)
-                                    .background {
-                                        if priority == p {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(priorityColor(p).opacity(0.15))
-                                                .overlay {
-                                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                        .fill(.ultraThinMaterial)
-                                                }
-                                        } else {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(.ultraThinMaterial)
-                                        }
-                                    }
-                                    .foregroundStyle(priority == p ? priorityColor(p) : .secondary)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .strokeBorder(priority == p ? priorityColor(p) : Color.secondary.opacity(0.2), lineWidth: priority == p ? 2 : 1)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                titleSection
+                dateTimeSection
+                repeatSection
+                prioritySection
+
+                if showAdvanced {
+                    durationSection
+                    organizationSection
+                    colorSection
+                    locationSection
                 }
-                
-                Section {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showAdvancedOptions.toggle()
-                        }
-                    } label: {
-                        HStack {
-                            Text("Advanced Options")
-                            Spacer()
-                            Image(systemName: "chevron.down")
-                                .rotationEffect(.degrees(showAdvancedOptions ? 180 : 0))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    if showAdvancedOptions {
-                        Text("Status")
-                            .font(.headline)
-                        Text("Defaults to Pending when creating a task.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        
-                        Text("Duration")
-                            .font(.headline)
-                        Toggle("Estimated Duration", isOn: $hasEstimatedDuration)
-                        
-                        if hasEstimatedDuration {
-                            Stepper(value: $estimatedDurationMinutes, in: 5...480, step: 5) {
-                                HStack {
-                                    Text("Duration")
-                                    Spacer()
-                                    Text("\(estimatedDurationMinutes) min")
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
-                                }
-                            }
-                        }
-                        
-                        Text("Organization")
-                            .font(.headline)
-                        TextField("Category", text: $category)
-                        TextField("Project", text: $project)
-                        TextField("Tags (comma separated)", text: $tags)
-                        
-                        Text("Color")
-                            .font(.headline)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(colorOptions, id: \.self) { color in
-                                    Button {
-                                        selectedColor = color
-                                    } label: {
-                                        ZStack {
-                                            Circle()
-                                                .fill(Color(hex: color))
-                                                .frame(width: 40, height: 40)
-                                            
-                                            if selectedColor == color {
-                                                Circle()
-                                                    .strokeBorder(.white, lineWidth: 3)
-                                                    .frame(width: 40, height: 40)
-                                                
-                                                Image(systemName: "checkmark")
-                                                    .font(.caption.bold())
-                                                    .foregroundStyle(.white)
-                                            }
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.vertical, 8)
-                        }
-                        
-                        Text("Location")
-                            .font(.headline)
-                        Toggle("Add Location", isOn: $hasLocation)
-                        
-                        if hasLocation {
-                            TextField("Location name", text: $location)
-                        }
-                        
-                        Text("Advanced")
-                            .font(.headline)
-                        Toggle("Pro Mode", systemImage: "star.fill", isOn: $isProMode)
-                        Toggle("Future Task", systemImage: "calendar.badge.clock", isOn: $isFuture)
-                    }
-                }
-                
-                // Error message
+
+                advancedToggle
+
                 if let error = errorMessage {
                     Section {
                         Text(error)
@@ -201,94 +61,316 @@ struct AddNewTask: View {
                     }
                 }
             }
-            .navigationTitle("Create Task")
-            .navigationBarTitleDisplayMode(.large)
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("New Task")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .accessibilityLabel("Close")
+                    Button("Cancel") { dismiss() }
                 }
-                
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        _Concurrency.Task {
-                            await saveTask()
-                        }
+                        _Concurrency.Task { await saveTask() }
                     } label: {
                         if isSaving {
-                            ProgressView()
+                            ProgressView().controlSize(.small)
                         } else {
-                            Text("Create")
-                                .bold()
+                            Text("Add").bold()
                         }
                     }
-                    .disabled(title.isEmpty || description.isEmpty || isSaving)
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                }
+            }
+            .onAppear { titleFocused = true }
+        }
+    }
+
+    // MARK: - Title
+
+    private var titleSection: some View {
+        Section {
+            TextField("Title", text: $title)
+                .font(.title3.weight(.semibold))
+                .focused($titleFocused)
+
+            TextField("Notes", text: $notes, axis: .vertical)
+                .font(.body)
+                .lineLimit(2...5)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Date & Time
+
+    private var dateTimeSection: some View {
+        Section {
+            Toggle(isOn: $hasDate.animation(.spring(response: 0.3))) {
+                Label("Date", systemImage: "calendar")
+                    .foregroundStyle(.red)
+            }
+
+            if hasDate {
+                DatePicker("Due Date", selection: $dueDate, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+
+                Toggle(isOn: $hasTime.animation(.spring(response: 0.3))) {
+                    Label("Time", systemImage: "clock")
+                        .foregroundStyle(.blue)
+                }
+
+                if hasTime {
+                    DatePicker("Time", selection: $dueTime, displayedComponents: .hourAndMinute)
+                        .transition(.opacity)
                 }
             }
         }
     }
-    
-    // MARK: - Save Task
-    
+
+    // MARK: - Repeat
+
+    private var repeatSection: some View {
+        Section {
+            Picker(selection: $recurrenceFrequency) {
+                Text("Never").tag(RecurrenceFrequency?.none)
+                ForEach(RecurrenceFrequency.allCases) { freq in
+                    Label(freq.label, systemImage: freq.icon).tag(Optional(freq))
+                }
+            } label: {
+                Label("Repeat", systemImage: "repeat")
+                    .foregroundStyle(.purple)
+            }
+
+            if recurrenceFrequency != nil {
+                Toggle(isOn: $hasRecurrenceEnd.animation(.spring(response: 0.3))) {
+                    Label("End Repeat", systemImage: "calendar.badge.minus")
+                        .foregroundStyle(.orange)
+                }
+                if hasRecurrenceEnd {
+                    DatePicker("End Date", selection: Binding(
+                        get: { recurrenceEndDate ?? Calendar.current.date(byAdding: .month, value: 3, to: Date())! },
+                        set: { recurrenceEndDate = $0 }
+                    ), displayedComponents: .date)
+                    .transition(.opacity)
+                }
+            }
+        }
+    }
+
+    // MARK: - Priority
+
+    private var prioritySection: some View {
+        Section {
+            HStack(spacing: 0) {
+                ForEach([TaskPriority.low, .medium, .high, .critical], id: \.self) { p in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.25)) { priority = p }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: p == .low ? "flag" : "flag.fill")
+                                .font(.body)
+                                .symbolEffect(.bounce, value: priority == p)
+                            Text(priorityLabel(p))
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background {
+                            if priority == p {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(priorityColor(p).opacity(0.12))
+                            }
+                        }
+                        .foregroundStyle(priority == p ? priorityColor(p) : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } header: {
+            Text("Priority")
+        }
+    }
+
+    // MARK: - Duration
+
+    private var durationSection: some View {
+        Section {
+            Toggle(isOn: $hasEstimatedDuration.animation(.spring(response: 0.3))) {
+                Label("Duration", systemImage: "timer")
+                    .foregroundStyle(.teal)
+            }
+            if hasEstimatedDuration {
+                Stepper(value: $estimatedMinutes, in: 5...480, step: 5) {
+                    HStack {
+                        Text("Estimated")
+                        Spacer()
+                        Text("\(estimatedMinutes) min")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Organization
+
+    private var organizationSection: some View {
+        Section("Organization") {
+            HStack {
+                Image(systemName: "folder")
+                    .foregroundStyle(.purple)
+                TextField("Category", text: $category)
+            }
+            HStack {
+                Image(systemName: "briefcase")
+                    .foregroundStyle(.indigo)
+                TextField("Project", text: $project)
+            }
+            HStack {
+                Image(systemName: "tag")
+                    .foregroundStyle(.teal)
+                TextField("Tags (comma separated)", text: $tagsText)
+            }
+        }
+    }
+
+    // MARK: - Color
+
+    private var colorSection: some View {
+        Section("Color") {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(colors, id: \.self) { hex in
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            selectedColor = hex
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: hex))
+                                    .frame(width: 34, height: 34)
+                                if selectedColor == hex {
+                                    Circle()
+                                        .strokeBorder(.white, lineWidth: 2.5)
+                                        .frame(width: 34, height: 34)
+                                    Image(systemName: "checkmark")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .scaleEffect(selectedColor == hex ? 1.15 : 1)
+                        .animation(.spring(response: 0.25), value: selectedColor)
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    // MARK: - Location
+
+    private var locationSection: some View {
+        Section {
+            Toggle(isOn: $hasLocation.animation(.spring(response: 0.3))) {
+                Label("Location", systemImage: "location")
+                    .foregroundStyle(.green)
+            }
+            if hasLocation {
+                TextField("Location name", text: $location)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Advanced Toggle
+
+    private var advancedToggle: some View {
+        Section {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.35)) { showAdvanced.toggle() }
+            } label: {
+                HStack {
+                    Label("More Options", systemImage: "ellipsis.circle")
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .rotationEffect(.degrees(showAdvanced ? 180 : 0))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    // MARK: - Save
+
     private func saveTask() async {
         isSaving = true
         errorMessage = nil
-        
+
         let now = Date()
-        let scheduledTimeString: String? = formatTime(now)
-        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+
+        var finalDue: Date?
+        if hasDate {
+            var cal = Calendar.current
+            cal.timeZone = .current
+            var comps = cal.dateComponents([.year, .month, .day], from: dueDate)
+            if hasTime {
+                let timeComps = cal.dateComponents([.hour, .minute], from: dueTime)
+                comps.hour = timeComps.hour
+                comps.minute = timeComps.minute
+            }
+            finalDue = cal.date(from: comps)
+        }
+
         await container.interactors.tasksInteractor.createTask(
-            title: title,
-            description: description,
+            title: title.trimmingCharacters(in: .whitespaces),
+            description: notes.isEmpty ? nil : notes,
             descriptionFormat: "plain",
             status: .pending,
             priority: priority,
             scheduledDate: now,
-            scheduledTime: scheduledTimeString,
-            dueDateTime: hasDueDate ? dueDate : nil,
-            estimatedDurationMinutes: hasEstimatedDuration ? estimatedDurationMinutes : nil,
+            scheduledTime: formatter.string(from: now),
+            dueDateTime: finalDue,
+            estimatedDurationMinutes: hasEstimatedDuration ? estimatedMinutes : nil,
             category: category.isEmpty ? nil : category,
             project: project.isEmpty ? nil : project,
-            tags: tags.isEmpty ? nil : tags,
+            tags: tagsText.isEmpty ? nil : tagsText,
             color: selectedColor,
             location: hasLocation ? location : nil,
             latitude: nil,
             longitude: nil,
-            isProModeEnabled: isProMode,
-            isFuture: isFuture
+            isProModeEnabled: false,
+            isFuture: false
         )
-        
+
+        if let freq = recurrenceFrequency,
+           let newId = container.appState.state.tasks.lastCreatedTaskId {
+            let recurrence = TaskRecurrence(
+                frequency: freq,
+                endDate: hasRecurrenceEnd ? recurrenceEndDate : nil
+            )
+            RecurrenceStore.set(recurrence, for: newId)
+        }
+
         isSaving = false
-        
+
         if container.appState.state.tasks.error == nil {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             dismiss()
         } else {
             errorMessage = container.appState.state.tasks.error?.localizedDescription
         }
     }
-    
-    // MARK: - Helper Functions
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
-    }
-    
-    private func priorityIcon(_ p: TaskPriority) -> String {
-        switch p {
-        case .critical: return "exclamationmark.3"
-        case .high: return "exclamationmark.2"
-        case .medium: return "minus"
-        case .low: return "arrow.down"
-        }
-    }
-    
+
+    // MARK: - Helpers
+
     private func priorityLabel(_ p: TaskPriority) -> String {
         switch p {
         case .critical: return "Critical"
@@ -297,7 +379,7 @@ struct AddNewTask: View {
         case .low: return "Low"
         }
     }
-    
+
     private func priorityColor(_ p: TaskPriority) -> Color {
         switch p {
         case .critical: return .red
@@ -306,7 +388,6 @@ struct AddNewTask: View {
         case .low: return .green
         }
     }
-    
 }
 
 #Preview {

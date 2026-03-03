@@ -2,6 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>72.60.125.230</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleURLTypes</key>
@@ -26,5 +39,17 @@
 	<array>
 		<string>com.overlookme.refresh</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>googleauthenticator</string>
+		<string>msauth</string>
+		<string>authy</string>
+		<string>duomobile</string>
+		<string>onepassword</string>
+	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Overlook Me uses your health data to display sleep, heart rate, activity, and water intake on your dashboard for a complete wellness overview.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Overlook Me can log water intake to help you track your hydration goals throughout the day.</string>
 </dict>
 </plist>

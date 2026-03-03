@@ -22,7 +22,6 @@ struct DailyHabitsView: View {
     @State private var selectedHabitForPomodoro: DailyHabitDTO?
     @State private var selectedHabitForCompletion: (habit: DailyHabitDTO, actionType: HabitCompletionSheet.HabitActionType)?
     @State private var notificationUpdateTrigger = UUID()
-    @State private var showFullInsight = false
     @State private var isBootstrappingHabits = true
     @State private var isPresentingFilters = false
     @State private var habitFilters = HabitFilters()
@@ -47,12 +46,12 @@ struct DailyHabitsView: View {
             gradientLayer
             
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    headerPlaceholder
+                VStack(alignment: .leading, spacing: 12) {
+                    progressHeader
                     habitsSection
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .padding(.top, 130)
                 .padding(.bottom, 48)
                 .safeAreaPadding(.top, 0)
@@ -161,31 +160,56 @@ _Concurrency.Task { await loadHabitsIfNeeded(force: true) }
         }
     }
     
-    private var headerPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(insightParagraph)
-                .font(.footnote)
-                .foregroundStyle(headerTextColor)
-                .lineSpacing(4)
-                .lineLimit(showFullInsight ? nil : 4)
-            Button(showFullInsight ? "read less" : "read more") {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showFullInsight.toggle()
-                }
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundColor(headerTextColor)
+    @State private var pillsAppeared = false
+
+    private var habitsDone: Int { filteredHabits.filter { completionLog(for: $0) != nil && !(completionLog(for: $0)?.wasSkipped ?? false) }.count }
+    private var habitsTotal: Int { filteredHabits.count }
+    private var habitsSkipped: Int { filteredHabits.filter { completionLog(for: $0)?.wasSkipped ?? false }.count }
+    private var habitsPending: Int { filteredHabits.filter { completionLog(for: $0) == nil }.count }
+    private var streakCount: Int { filteredHabits.filter { ($0.currentStreak ?? 0) > 0 }.count }
+
+    private var progressHeader: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 8) {
+            habitPill(value: habitsTotal, label: "Total", icon: "square.grid.2x2.fill", color: .blue, delay: 0)
+            habitPill(value: habitsDone, label: "Done", icon: "checkmark.circle.fill", color: .green, delay: 0.05)
+            habitPill(value: habitsSkipped, label: "Skipped", icon: "forward.fill", color: .orange, delay: 0.1)
+            habitPill(value: habitsPending, label: "Pending", icon: "clock.fill", color: .purple, delay: 0.15)
+            habitPill(value: streakCount, label: "Streaks", icon: "flame.fill", color: .red, delay: 0.2)
         }
-        .padding(.horizontal, 4)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(DailyHabitsPalette.cardBackground(for: colorScheme))
+                .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 6, y: 3)
+        )
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.75).delay(0.1)) { pillsAppeared = true }
+        }
     }
-    
-    private var headerTextColor: Color {
-        colorScheme == .dark ? .white.opacity(0.9) : Color(.label)
+
+    private func habitPill(value: Int, label: String, icon: String, color: Color, delay: Double) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(color)
+            Text("\(value)")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText(value: Double(value)))
+            Text(label)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(color.opacity(colorScheme == .dark ? 0.1 : 0.06))
+        )
+        .scaleEffect(pillsAppeared ? 1 : 0.7)
+        .opacity(pillsAppeared ? 1 : 0)
+        .animation(.spring(response: 0.45, dampingFraction: 0.7).delay(delay), value: pillsAppeared)
     }
-    
-    private let insightParagraph = """
-lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque penatibus et magnis dis parturient montes. nullam habitant morbi tristique senectus et netus ac turpis egestas euismod. integer cursus justo luctus mi malesuada, sed rutrum sapien pretium. maecenas mattis ligula pulvinar lacus sodales bibendum, finibus ligula semper mauris ullamcorper. quisque congue risus lectus, consequat tortor dapibus fringilla odio. proin posuere ante vel elit posuere luctus, quis faucibus lorem rhoncus. vestibulum enim tellus, molestie facilisis pharetra id, pulvinar id nisl. vivamus ultricies arcu nibh, iaculis lacinia neque porta ut. suspendisse fermentum metus augue, fermentum gravida quam dictum et. curabitur magna quam, congue at nisl vel, fermentum viverra erat. quisque commodo feugiat erat non varius. in vehicula mauris nunc, interdum aliquam libero tristique non. sed vulputate eros vitae nisl gravida euismod ornare tellus. pellentesque quis magna dictum, mattis diam eu, convallis ligula. morbi fringilla sapien in erat auctor dapibus. nam eget felis convallis, vehicula arcu eget, gravida orci. fusce malesuada molestie magna, eget imperdiet felis pretium ac. duis massa elit, efficitur eget interdum sit amet, suscipit at lacus. sed sed vehicula lorem, quis feugiat nisi. curabitur volutpat nisl vitae arcu tincidunt bibendum suscipit augue. integer dignissim ligula in odio sagittis pharetra.
-"""
     
     private var filteredHabits: [DailyHabitDTO] {
         displayedHabits.filter { habit in
@@ -225,21 +249,20 @@ lorem ipsum dolor sit amet, habitasse platea dictumst viverra tempor, natoque pe
                 noMatchingFiltersView
             }
         } else {
-            VStack(spacing: 16) {
+            VStack(spacing: 10) {
                 ForEach(filteredHabits) { habit in
-                    HabitCardView(
+                    HabitRow(
                         habit: habit,
                         completion: completionLog(for: habit),
                         isPerformingAction: habitsState.pendingActionHabitId == habit.id,
                         onAction: handleHabitAction,
-                        onNotification: { selectedHabitForNotification = $0 },
-                        onPomodoro: { selectedHabitForPomodoro = $0 },
                         onSelect: { selectedHabitForDetail = $0 },
                         onArchive: handleArchive,
                         onEdit: { selectedHabitForDetail = $0 },
+                        onNotification: { selectedHabitForNotification = $0 },
+                        onPomodoro: { selectedHabitForPomodoro = $0 },
                         notificationUpdateTrigger: notificationUpdateTrigger
                     )
-                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
             }
         }
@@ -593,591 +616,384 @@ private extension DailyHabitsView {
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Habit Card
 
-private struct HabitCardView: View {
+private struct HabitRow: View {
     @Environment(\.colorScheme) private var colorScheme
     let habit: DailyHabitDTO
     let completion: HabitCompletionLogDTO?
     let isPerformingAction: Bool
     let onAction: (HabitAction) -> Void
-    let onNotification: (DailyHabitDTO) -> Void
-    let onPomodoro: (DailyHabitDTO) -> Void
     let onSelect: (DailyHabitDTO) -> Void
     let onArchive: (DailyHabitDTO) -> Void
     let onEdit: (DailyHabitDTO) -> Void
+    let onNotification: (DailyHabitDTO) -> Void
+    let onPomodoro: (DailyHabitDTO) -> Void
     let notificationUpdateTrigger: UUID
-    let extraContent: AnyView?
+
     @State private var celebrationTrigger = 0
     @State private var notificationCount: Int = 0
     @State private var dragOffset: CGFloat = 0
     @State private var swipeDirection: SwipeDirection = .none
-    
-    private let swipeThreshold: CGFloat = 60
-    private let swipeOpenWidth: CGFloat = 80
-    
-    private enum SwipeDirection {
-        case none, left, right
-    }
-    
-    init(
-        habit: DailyHabitDTO,
-        completion: HabitCompletionLogDTO?,
-        isPerformingAction: Bool,
-        onAction: @escaping (HabitAction) -> Void,
-        onNotification: @escaping (DailyHabitDTO) -> Void,
-        onPomodoro: @escaping (DailyHabitDTO) -> Void,
-        onSelect: @escaping (DailyHabitDTO) -> Void,
-        onArchive: @escaping (DailyHabitDTO) -> Void,
-        onEdit: @escaping (DailyHabitDTO) -> Void,
-        notificationUpdateTrigger: UUID = UUID(),
-        extraContent: AnyView? = nil
-    ) {
-        self.habit = habit
-        self.completion = completion
-        self.isPerformingAction = isPerformingAction
-        self.onAction = onAction
-        self.onNotification = onNotification
-        self.onPomodoro = onPomodoro
-        self.onSelect = onSelect
-        self.onArchive = onArchive
-        self.onEdit = onEdit
-        self.notificationUpdateTrigger = notificationUpdateTrigger
-        self.extraContent = extraContent
-    }
-    
-    private var priorityLabel: String? { habit.priority?.capitalized }
-    private var frequencyLabel: String {
-        (habit.frequency ?? "daily").replacingOccurrences(of: "_", with: " ").capitalized
-    }
-    private var isPositiveHabit: Bool { habit.isPositive ?? true }
+
+    private let swipeThreshold: CGFloat = 50
+    private let swipeOpenWidth: CGFloat = 72
+    private enum SwipeDirection { case none, left, right }
+
+    private var isPositive: Bool { habit.isPositive ?? true }
     private var isActionDisabled: Bool { isPerformingAction || completion != nil }
-    
+
+    private var state: Done {
+        guard let completion else { return .pending }
+        if completion.wasSkipped ?? false { return .skipped }
+        return completion.completed ? .done : .failed
+    }
+    private enum Done { case pending, done, skipped, failed }
+
+    private var pColor: Color {
+        switch habit.priority?.lowercased() {
+        case "high": return .red
+        case "medium": return .orange
+        default: return .blue
+        }
+    }
+    private var pSymbol: String {
+        switch habit.priority?.lowercased() {
+        case "high": return "exclamationmark.3"
+        case "medium": return "exclamationmark.2"
+        default: return "exclamationmark"
+        }
+    }
+
+    // MARK: Body
+
     var body: some View {
         ZStack {
-            // Archive action revealed when swiping right
-            archiveActionBackground
-            
-            // Edit action revealed when swiping left
-            editActionBackground
-            
-            // Main card content
-            VStack(alignment: .leading, spacing: 16) {
-                headerRow
-                
-                Divider()
-                    .frame(height: 0.5)
-                    .opacity(0.5)
-                
-                metaRow
-                
-                Divider()
-                    .frame(height: 0.5)
-                    .opacity(0.5)
-                
-                actionRow
-                
-                if let extraContent {
-                    Divider()
-                        .frame(height: 0.5)
-                        .opacity(0.5)
-                    extraContent
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(DailyHabitsPalette.cardBackground(for: colorScheme))
-            .cornerRadius(16)
-            .shadow(color: DailyHabitsPalette.cardShadow(for: colorScheme), radius: 8, y: 4)
-            .offset(x: dragOffset)
-            .gesture(
-                DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                    .onChanged { value in
-                        handleDragChanged(value)
-                    }
-                    .onEnded { value in
-                        handleDragEnded(value)
-                    }
-            )
-            .onTapGesture {
-                if swipeDirection != .none {
-                    // Close the swipe action
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        dragOffset = 0
-                        swipeDirection = .none
-                    }
-                } else if dragOffset == 0 {
-                    onSelect(habit)
-                }
-            }
+            swipeArchiveLayer
+            swipeEditLayer
+            card
+                .offset(x: dragOffset)
+                .gesture(dragGesture)
+                .onTapGesture { handleTap() }
         }
         .clipped()
+        .onAppear { loadNotificationCount() }
+        .onChange(of: notificationUpdateTrigger) { _ in loadNotificationCount() }
     }
-    
-    private var archiveActionBackground: some View {
-        HStack(spacing: 0) {
-            Button {
-                triggerArchive()
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "archivebox.fill")
-                        .font(.title2.weight(.semibold))
-                    Text("Archive")
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundColor(.white)
-                .frame(width: swipeOpenWidth)
-                .frame(maxHeight: .infinity)
-            }
-            .buttonStyle(.plain)
-            
-            Spacer()
+
+    // MARK: - Card Layout
+
+    private var card: some View {
+        VStack(spacing: 0) {
+            topRow
+            bottomRow
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.orange, Color.orange.opacity(0.8)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
-        .cornerRadius(16)
-        .opacity(dragOffset > 0 ? min(dragOffset / 40, 1.0) : 0)
-    }
-    
-    private var editActionBackground: some View {
-        HStack(spacing: 0) {
-            Spacer()
-            
-            Button {
-                triggerEdit()
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "pencil")
-                        .font(.title2.weight(.semibold))
-                    Text("Edit")
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundColor(.white)
-                .frame(width: swipeOpenWidth)
-                .frame(maxHeight: .infinity)
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.blue.opacity(0.8), Color.blue],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
-        .cornerRadius(16)
-        .opacity(dragOffset < 0 ? min(abs(dragOffset) / 40, 1.0) : 0)
-    }
-    
-    private func triggerArchive() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-        
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            dragOffset = 0
-            swipeDirection = .none
-        }
-        onArchive(habit)
-    }
-    
-    private func triggerEdit() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-        
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            dragOffset = 0
-            swipeDirection = .none
-        }
-        onEdit(habit)
-    }
-    
-    private func handleDragChanged(_ value: DragGesture.Value) {
-        let horizontal = value.translation.width
-        
-        // Calculate offset based on current swipe direction
-        var startOffset: CGFloat = 0
-        if swipeDirection == .right {
-            startOffset = swipeOpenWidth
-        } else if swipeDirection == .left {
-            startOffset = -swipeOpenWidth
-        }
-        
-        let newOffset = startOffset + horizontal
-        
-        // Clamp to max swipe range in both directions
-        dragOffset = max(-swipeOpenWidth - 40, min(newOffset, swipeOpenWidth + 40))
-    }
-    
-    private func handleDragEnded(_ value: DragGesture.Value) {
-        let velocity = value.predictedEndTranslation.width - value.translation.width
-        
-        // Determine if we should open right (Archive)
-        let shouldOpenRight = dragOffset > swipeThreshold / 2 || (dragOffset > 0 && velocity > 100)
-        
-        // Determine if we should open left (Edit)
-        let shouldOpenLeft = dragOffset < -swipeThreshold / 2 || (dragOffset < 0 && velocity < -100)
-        
-        if shouldOpenRight && swipeDirection != .right {
-            // Snap open right with haptic feedback
-            let generator = UIImpactFeedbackGenerator(style: .light)
-            generator.impactOccurred()
-            
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dragOffset = swipeOpenWidth
-                swipeDirection = .right
-            }
-        } else if shouldOpenLeft && swipeDirection != .left {
-            // Snap open left with haptic feedback
-            let generator = UIImpactFeedbackGenerator(style: .light)
-            generator.impactOccurred()
-            
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dragOffset = -swipeOpenWidth
-                swipeDirection = .left
-            }
-        } else if !shouldOpenRight && !shouldOpenLeft {
-            // Snap closed
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dragOffset = 0
-                swipeDirection = .none
-            }
-        } else if swipeDirection == .right {
-            // Keep right open
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dragOffset = swipeOpenWidth
-            }
-        } else if swipeDirection == .left {
-            // Keep left open
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dragOffset = -swipeOpenWidth
-            }
-        }
-    }
-    
-    private var headerRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(habit.name)
-                .font(.title2.weight(.bold))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(2)
-                .truncationMode(.tail)
-            if let description = habit.description, !description.isEmpty {
-                Text(description)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-        }
-    }
-    
-    private var metaRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: isPositiveHabit ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                .font(.caption)
-                .foregroundStyle(isPositiveHabit ? .green : .red)
-            
-            Text(isPositiveHabit ? "Build" : "Break")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            
-            if let priority = priorityLabel {
-                Text("•")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                
-                priorityIcon(for: priority)
-                
-                Text(priority)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            
-            Text("•")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            
-            Text(frequencyLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            
-            Spacer(minLength: 0)
-            
-            Button {
-                onPomodoro(habit)
-            } label: {
-                Image(systemName: "timer")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
-                    .padding(8)
-                    .background(Color(uiColor: .secondarySystemFill))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Start Pomodoro timer")
-            
-            Button {
-                onNotification(habit)
-            } label: {
-                ZStack {
-                    Image(systemName: "bell")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                        .background(Color(uiColor: .secondarySystemFill))
-                        .clipShape(Circle())
-                    
-                    if notificationCount > 0 {
-                        Text("\(notificationCount)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 16, height: 16)
-                            .background(Color.red)
-                            .clipShape(Circle())
-                            .offset(x: 10, y: -10)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Habit notifications")
-            .onAppear { updateNotificationCount() }
-            .onChange(of: notificationUpdateTrigger) { _ in updateNotificationCount() }
-        }
-    }
-    
-    private func updateNotificationCount() {
-        if let saved = UserDefaults.standard.array(forKey: "notifications_\(habit.id)") as? [Date] {
-            notificationCount = saved.count
-        } else {
-            notificationCount = 0
-        }
-    }
-    
-    @ViewBuilder
-    private func priorityIcon(for priority: String) -> some View {
-        switch priority.lowercased() {
-        case "high":
-            Image(systemName: "exclamationmark")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.red)
-        case "medium":
-            Image(systemName: "chevron.up.2")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
-        case "low":
-            Image(systemName: "chevron.up")
-                .font(.caption)
-                .foregroundStyle(.blue)
-        default:
-            EmptyView()
-        }
-    }
-    
-    @ViewBuilder
-    private var actionRow: some View {
-        if let completion {
-            completionStatusButton(for: completion)
-        } else if isPositiveHabit {
-            HStack(spacing: 12) {
-                primaryActionButton(
-                    title: "Check In",
-                    systemIcon: "checkmark.circle.fill",
-                    style: .checkIn,
-                    action: .checkIn(habit)
-                )
-                secondaryActionButton(
-                    title: "Skip This Day",
-                    systemIcon: "minus.circle.fill",
-                    tint: Color(.systemGray4),
-                    action: .skipDay(habit)
-                )
-            }
-        } else {
-            HStack(spacing: 12) {
-                primaryActionButton(
-                    title: "Resisted",
-                    systemIcon: "shield.checkered",
-                    style: .resisted,
-                    action: .resisted(habit)
-                )
-                secondaryActionButton(
-                    title: "Failed to resist",
-                    systemIcon: "exclamationmark.circle.fill",
-                    tint: .red,
-                    action: .failedToResist(habit)
-                )
-            }
-        }
-    }
-    
-    private func primaryActionButton(
-        title: String,
-        systemIcon: String,
-        style: PrimaryActionStyle,
-        action: HabitAction
-    ) -> some View {
-        let palette = style.palette(for: colorScheme)
-        return Button {
-            if !isActionDisabled {
-                celebrationTrigger &+= 1
-            }
-            onAction(action)
-        } label: {
-            Label(title, systemImage: systemIcon)
-                .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(Color.white)
-                .background(
-                    ZStack {
-                        Capsule()
-                            .fill(palette.fillColor)
-                        
-                        Capsule()
-                            .fill(.ultraThinMaterial)
-                            .opacity(0.3)
-                    }
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(
-                            .linearGradient(
-                                colors: [
-                                    Color.white.opacity(0.4),
-                                    Color.white.opacity(0.1)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(isActionDisabled)
-        .opacity(isActionDisabled ? 0.6 : 1)
+        .padding(14)
+        .background(cardSurface)
         .overlay(alignment: .top) {
             ConfettiEmitterView(trigger: celebrationTrigger)
-                .frame(height: 140)
-                .offset(y: -16)
+                .frame(height: 120)
+                .offset(y: -10)
                 .allowsHitTesting(false)
         }
     }
-    
-    private func secondaryActionButton(
-        title: String,
-        systemIcon: String,
-        tint: Color,
-        action: HabitAction
-    ) -> some View {
-        return Button {
-            onAction(action)
-        } label: {
-            Label(title, systemImage: systemIcon)
-                .font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(.secondary)
-                .background(
-                    ZStack {
-                        Capsule()
-                            .fill(.ultraThinMaterial)
-                        
-                        Capsule()
-                            .fill(Color(uiColor: .secondarySystemFill))
-                            .opacity(0.5)
-                    }
+
+    // ── Row 1: Priority icon · Name · Streak · Timer · Bell ──
+
+    private var topRow: some View {
+        HStack(spacing: 10) {
+            priorityAvatar
+            nameLabel
+            Spacer(minLength: 0)
+            streakPill
+            toolbarIcons
+        }
+    }
+
+    // ── Row 2: Meta tags · Action circles ──
+
+    private var bottomRow: some View {
+        HStack(spacing: 0) {
+            metaTags
+            Spacer(minLength: 0)
+            actionCircles
+        }
+        .padding(.top, 10)
+    }
+
+    // MARK: - Priority Avatar
+
+    private var priorityAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            pColor.opacity(colorScheme == .dark ? 0.32 : 0.18),
+                            pColor.opacity(colorScheme == .dark ? 0.1 : 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
                 .overlay(
-                    Capsule()
-                        .strokeBorder(
-                            Color.white.opacity(colorScheme == .dark ? 0.15 : 0.3),
-                            lineWidth: 0.5
-                        )
+                    Circle()
+                        .strokeBorder(pColor.opacity(state == .done ? 0.6 : 0.18), lineWidth: state == .done ? 2 : 1)
                 )
+
+            Image(systemName: pSymbol)
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundStyle(pColor)
+                .scaleEffect(state == .done ? 1.12 : 1)
+                .animation(.spring(response: 0.4, dampingFraction: 0.55), value: state)
+        }
+        .frame(width: 40, height: 40)
+        .shadow(color: state == .done ? pColor.opacity(0.25) : .clear, radius: 5, y: 2)
+        .animation(.easeInOut(duration: 0.25), value: state)
+    }
+
+    // MARK: - Name
+
+    private var nameLabel: some View {
+        Text(habit.name)
+            .font(.system(size: 15, weight: .semibold))
+            .lineLimit(1)
+            .foregroundStyle(.primary)
+    }
+
+    // MARK: - Streak Pill
+
+    @ViewBuilder
+    private var streakPill: some View {
+        if let s = habit.currentStreak, s > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 10))
+                Text("\(s)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.orange.opacity(colorScheme == .dark ? 0.15 : 0.08), in: Capsule())
+        }
+    }
+
+    // MARK: - Toolbar Icons (Robinhood style)
+
+    private var toolbarIcons: some View {
+        HStack(spacing: 14) {
+            Button { onPomodoro(habit) } label: {
+                Image(systemName: "timer")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(Color(.label).opacity(0.35))
+            }
+            .buttonStyle(.plain)
+
+            Button { onNotification(habit) } label: {
+                Image(systemName: "bell")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(Color(.label).opacity(0.35))
+                    .overlay(alignment: .topTrailing) {
+                        if notificationCount > 0 {
+                            Circle().fill(Color.green)
+                                .frame(width: 5, height: 5)
+                                .offset(x: 2, y: -1)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Meta Tags
+
+    private var metaTags: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 3) {
+                Image(systemName: isPositive ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 8, weight: .bold))
+                Text(isPositive ? "Build" : "Break")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .foregroundStyle(isPositive ? .green : .red)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background((isPositive ? Color.green : Color.red).opacity(colorScheme == .dark ? 0.15 : 0.08), in: Capsule())
+
+            Text((habit.frequency ?? "daily").replacingOccurrences(of: "_", with: " ").capitalized)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color(.quaternarySystemFill), in: Capsule())
+
+            if let cat = habit.category, !cat.isEmpty {
+                Text(cat)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color(.quaternarySystemFill), in: Capsule())
+            }
+        }
+    }
+
+    // MARK: - Action Circles
+
+    @ViewBuilder
+    private var actionCircles: some View {
+        if isPerformingAction {
+            ProgressView()
+                .scaleEffect(0.7)
+                .frame(width: 36, height: 36)
+        } else {
+            HStack(spacing: 8) {
+                actionCircle(
+                    icon: isPositive ? "forward.fill" : "xmark",
+                    color: isPositive ? .orange : .red,
+                    isSelected: state == .skipped || state == .failed,
+                    dimmed: state == .done
+                ) {
+                    guard !isActionDisabled else { return }
+                    onAction(isPositive ? .skipDay(habit) : .failedToResist(habit))
+                }
+
+                actionCircle(
+                    icon: isPositive ? "checkmark" : "shield.checkered",
+                    color: .green,
+                    isSelected: state == .done,
+                    dimmed: state == .skipped || state == .failed
+                ) {
+                    guard !isActionDisabled else { return }
+                    celebrationTrigger &+= 1
+                    onAction(isPositive ? .checkIn(habit) : .resisted(habit))
+                }
+            }
+        }
+    }
+
+    private func actionCircle(
+        icon: String,
+        color: Color,
+        isSelected: Bool,
+        dimmed: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(isSelected ? .white : color)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle().fill(isSelected ? color : color.opacity(colorScheme == .dark ? 0.18 : 0.1))
+                )
+                .overlay(
+                    Circle().strokeBorder(color.opacity(isSelected ? 0 : 0.3), lineWidth: 1.5)
+                )
+                .scaleEffect(isSelected ? 1.1 : 1)
+                .animation(.spring(response: 0.3, dampingFraction: 0.55), value: isSelected)
         }
         .buttonStyle(.plain)
         .disabled(isActionDisabled)
-        .opacity(isActionDisabled ? 0.6 : 1)
+        .opacity(dimmed ? 0.3 : 1)
     }
-    
-    private func completionStatusButton(for completion: HabitCompletionLogDTO) -> some View {
-        let status = statusAppearance(for: completion)
-        return HStack(spacing: 8) {
-            Image(systemName: status.icon)
-                .font(.subheadline.weight(.semibold))
-            Text(status.text)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.9)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(status.background)
-        )
-        .foregroundStyle(status.foreground)
-    }
-    
-    private func statusAppearance(for completion: HabitCompletionLogDTO) -> (text: String, icon: String, background: Color, foreground: Color) {
-        let backgroundOpacity = colorScheme == .dark ? 0.35 : 0.15
-        let wasSkipped = completion.wasSkipped ?? false
-        
-        if wasSkipped {
-            return (
-                text: "Skipped today",
-                icon: "minus.circle.fill",
-                background: Color.orange.opacity(backgroundOpacity),
-                foreground: .orange
+
+    // MARK: - Card Surface
+
+    private var cardSurface: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(DailyHabitsPalette.cardBackground(for: colorScheme))
+            .shadow(
+                color: state == .done
+                    ? Color.green.opacity(colorScheme == .dark ? 0.2 : 0.1)
+                    : DailyHabitsPalette.cardShadow(for: colorScheme),
+                radius: state == .done ? 10 : 6,
+                y: 3
             )
-        }
-        
-        if completion.completed {
-            return (
-                text: isPositiveHabit ? "Checked in today" : "Resisted today",
-                icon: isPositiveHabit ? "checkmark.circle.fill" : "shield.checkered",
-                background: Color.green.opacity(backgroundOpacity),
-                foreground: .green
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        state == .done
+                            ? Color.green.opacity(colorScheme == .dark ? 0.3 : 0.15)
+                            : Color(.separator).opacity(colorScheme == .dark ? 0.15 : 0.08),
+                        lineWidth: 1
+                    )
             )
-        }
-        
-        return (
-            text: isPositiveHabit ? "Missed today" : "Failed to resist",
-            icon: isPositiveHabit ? "xmark.circle.fill" : "exclamationmark.triangle.fill",
-            background: Color.red.opacity(backgroundOpacity),
-            foreground: .red
-        )
     }
-    
-    private struct ButtonPalette {
-        let fillColor: Color
-    }
-    
-    private enum PrimaryActionStyle {
-        case checkIn
-        case resisted
-        
-        func palette(for scheme: ColorScheme) -> ButtonPalette {
-            switch self {
-            case .checkIn:
-                return ButtonPalette(fillColor: .blue)
-            case .resisted:
-                let deepGreen = Color(red: 0.13, green: 0.55, blue: 0.13)
-                return ButtonPalette(fillColor: deepGreen)
+
+    // MARK: - Swipe Actions
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+            .onChanged { v in
+                var base: CGFloat = 0
+                if swipeDirection == .right { base = swipeOpenWidth }
+                else if swipeDirection == .left { base = -swipeOpenWidth }
+                dragOffset = max(-swipeOpenWidth - 30, min(base + v.translation.width, swipeOpenWidth + 30))
             }
+            .onEnded { v in
+                let vel = v.predictedEndTranslation.width - v.translation.width
+                let openR = dragOffset > swipeThreshold / 2 || (dragOffset > 0 && vel > 100)
+                let openL = dragOffset < -swipeThreshold / 2 || (dragOffset < 0 && vel < -100)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    if openR { dragOffset = swipeOpenWidth; swipeDirection = .right }
+                    else if openL { dragOffset = -swipeOpenWidth; swipeDirection = .left }
+                    else { dragOffset = 0; swipeDirection = .none }
+                }
+            }
+    }
+
+    private var swipeArchiveLayer: some View {
+        HStack {
+            Button { fireSwipe(archive: true) } label: {
+                Image(systemName: "archivebox.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(.white)
+                    .frame(width: swipeOpenWidth)
+                    .frame(maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+            Spacer()
         }
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.orange))
+        .opacity(dragOffset > 0 ? min(dragOffset / 30, 1) : 0)
+    }
+
+    private var swipeEditLayer: some View {
+        HStack {
+            Spacer()
+            Button { fireSwipe(archive: false) } label: {
+                Image(systemName: "pencil")
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(.white)
+                    .frame(width: swipeOpenWidth)
+                    .frame(maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.blue))
+        .opacity(dragOffset < 0 ? min(abs(dragOffset) / CGFloat(30), 1) : 0)
+    }
+
+    private func fireSwipe(archive: Bool) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            dragOffset = 0; swipeDirection = .none
+        }
+        archive ? onArchive(habit) : onEdit(habit)
+    }
+
+    private func handleTap() {
+        if swipeDirection != .none {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dragOffset = 0; swipeDirection = .none
+            }
+        } else { onSelect(habit) }
+    }
+
+    private func loadNotificationCount() {
+        notificationCount = (UserDefaults.standard.array(forKey: "notifications_\(habit.id)") as? [Date])?.count ?? 0
     }
 }
 

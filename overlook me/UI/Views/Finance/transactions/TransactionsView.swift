@@ -24,13 +24,13 @@ struct TransactionsView: View {
             }
         }
         .navigationTitle(tab.label)
+        .toolbarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                timeRangeMenu
-            }
-            
-            ToolbarItem(placement: .topBarTrailing) {
-                refreshButton
+                HStack(spacing: 12) {
+                    timeRangeMenu
+                    refreshButton
+                }
             }
         }
         .task {
@@ -49,24 +49,37 @@ struct TransactionsView: View {
                     viewModel.selectedTimeRange = range
                 } label: {
                     if viewModel.selectedTimeRange == range {
-                        Label(range.label, systemImage: "checkmark")
+                        Label(range.label, systemImage: "checkmark.circle.fill")
                     } else {
                         Text(range.label)
                     }
                 }
             }
         } label: {
-            Label(viewModel.selectedTimeRange.label, systemImage: "calendar")
+            HStack(spacing: 4) {
+                Image(systemName: "calendar.circle.fill")
+                    .font(.body)
+                Text(viewModel.selectedTimeRange.label)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
         }
     }
     
     private var refreshButton: some View {
         Button(action: { performRefresh() }) {
-            if viewModel.isLoading {
-                ProgressView()
-            } else {
-                Image(systemName: "arrow.clockwise")
+            Group {
+                if viewModel.isLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.title3)
+                }
             }
+            .frame(width: 32, height: 32)
         }
         .disabled(viewModel.isLoading)
     }
@@ -246,9 +259,16 @@ final class TransactionsViewModel {
         let startDate = dateFormatter.string(from: range.start)
         let endDate = dateFormatter.string(from: range.end)
         
+        print("📊 [Analytics] Loading analytics for userId: \(userId), range: \(startDate) to \(endDate)")
+        
         do {
             analysisData = try await api.getSpendingAnalysis(userId: userId, startDate: startDate, endDate: endDate)
+            print("✅ [Analytics] Successfully loaded analysis data:")
+            print("   - dailyBreakdown count: \(analysisData?.dailyBreakdown?.count ?? 0)")
+            print("   - topCategories count: \(analysisData?.topCategories?.count ?? 0)")
+            print("   - averageDailySpending: \(analysisData?.averageDailySpending ?? 0)")
         } catch {
+            print("❌ [Analytics] Failed to load analytics: \(error)")
             errorMessage = error.localizedDescription
         }
     }

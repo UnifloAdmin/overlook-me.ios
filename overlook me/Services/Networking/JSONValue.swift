@@ -36,5 +36,47 @@ enum JSONValue: Codable, Equatable {
         case .object(let v): try container.encode(v)
         }
     }
+
+    // MARK: - Convenience accessors
+
+    var objectValue: [String: JSONValue]? {
+        if case .object(let v) = self { return v }
+        return nil
+    }
+
+    var arrayValue: [JSONValue]? {
+        if case .array(let v) = self { return v }
+        return nil
+    }
+
+    var stringValue: String? {
+        if case .string(let v) = self { return v }
+        return nil
+    }
+
+    var doubleValue: Double? {
+        switch self {
+        case .double(let v): return v
+        case .int(let v): return Double(v)
+        default: return nil
+        }
+    }
+
+    var intValue: Int? {
+        switch self {
+        case .int(let v): return v
+        case .double(let v): return Int(v)
+        default: return nil
+        }
+    }
+
+    var boolValue: Bool? {
+        if case .bool(let v) = self { return v }
+        return nil
+    }
+
+    subscript(key: String) -> JSONValue? {
+        objectValue?[key]
+    }
 }
 

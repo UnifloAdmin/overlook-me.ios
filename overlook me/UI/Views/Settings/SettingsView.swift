@@ -7,45 +7,67 @@
 
 import SwiftUI
 
+// MARK: - Settings Tab
+
+private enum SettingsTab: String, CaseIterable, Identifiable {
+    case security, notifications, account, appearance
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .security:      "Security"
+        case .notifications: "Notifications"
+        case .account:       "Account"
+        case .appearance:    "Appearance"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .security:      "lock.shield"
+        case .notifications: "bell.badge"
+        case .account:       "person.crop.circle"
+        case .appearance:    "paintbrush"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .security:      Color.wellnessGreen
+        case .notifications: .orange
+        case .account:       .blue
+        case .appearance:    .purple
+        }
+    }
+}
+
+// MARK: - Settings View
+
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("isFaceIdDisabled") private var isFaceIdDisabled = false
-    @State private var isConsentSheetPresented = false
+    @State private var selectedTab: SettingsTab = .security
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Settings")
-                        .font(.system(size: 28, weight: .bold, design: .default))
-                        .foregroundStyle(.primary)
-
-                    Text("Personalize your experience and manage preferences.")
-                        .font(.system(size: 15, weight: .regular, design: .default))
-                        .foregroundStyle(.secondary)
-
-                    SettingsSection(title: "Security") {
-                        Toggle(isOn: faceIdEnabledBinding) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "faceid")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                Text("Face ID")
-                                    .font(.system(size: 16, weight: .semibold, design: .default))
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                            .tint(.accentColor)
-                            .padding(14)
-                            .background(Color(.secondarySystemGroupedBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            List {
+                // Sidebar menu
+                Section {
+                    ForEach(SettingsTab.allCases) { tab in
+                        settingsRow(tab)
                     }
+                } header: {
+                    Text("Settings")
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 24)
+
+                // Security extras
+                Section {
+                    faceIdRow
+                } header: {
+                    Text("Quick Toggles")
+                }
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .listStyle(.insetGrouped)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -59,55 +81,119 @@ struct SettingsView: View {
                     }
                 }
             }
-            .sheet(isPresented: $isConsentSheetPresented) {
-                FaceIdDisableConsentSheet(
-                    onConsent: {
-                        isFaceIdDisabled = true
-                        isConsentSheetPresented = false
-                    },
-                    onCancel: {
-                        isConsentSheetPresented = false
-                    }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+            .navigationDestination(for: SettingsTab.self) { tab in
+                settingsDestination(tab)
             }
         }
     }
 
-    private var faceIdEnabledBinding: Binding<Bool> {
+    // MARK: - Row
+
+    private func settingsRow(_ tab: SettingsTab) -> some View {
+        NavigationLink(value: tab) {
+            Label {
+                Text(tab.label)
+                    .font(.body)
+            } icon: {
+                Image(systemName: tab.icon)
+                    .foregroundStyle(tab.color)
+            }
+        }
+    }
+
+    // MARK: - Destination
+
+    @ViewBuilder
+    private func settingsDestination(_ tab: SettingsTab) -> some View {
+        switch tab {
+        case .security:
+            SecuritySettingsView()
+        case .notifications:
+            PlaceholderSettingsView(title: "Notifications", icon: "bell.badge", description: "Manage email, push, and in-app notification preferences.")
+        case .account:
+            PlaceholderSettingsView(title: "Account", icon: "person.crop.circle", description: "Manage your profile, email, and password.")
+        case .appearance:
+            PlaceholderSettingsView(title: "Appearance", icon: "paintbrush", description: "Customize theme, layout, and display preferences.")
+        }
+    }
+
+    // MARK: - Face ID Row
+
+    @AppStorage("isFaceIdDisabled") private var isFaceIdDisabled = false
+    @State private var isConsentSheetPresented = false
+
+    private var faceIdRow: some View {
+        Toggle(isOn: faceIdBinding) {
+            Label {
+                Text("Face ID")
+                    .font(.body)
+            } icon: {
+                Image(systemName: "faceid")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(Color.wellnessGreen)
+        .sheet(isPresented: $isConsentSheetPresented) {
+            FaceIdDisableConsentSheet(
+                onConsent: {
+                    isFaceIdDisabled = true
+                    isConsentSheetPresented = false
+                },
+                onCancel: {
+                    isConsentSheetPresented = false
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var faceIdBinding: Binding<Bool> {
         Binding(
             get: { !isFaceIdDisabled },
             set: { newValue in
-                if newValue {
-                    isFaceIdDisabled = false
-                } else {
-                    isConsentSheetPresented = true
-                }
+                if newValue { isFaceIdDisabled = false }
+                else { isConsentSheetPresented = true }
             }
         )
     }
 }
 
-private struct SettingsSection<Content: View>: View {
-    let title: String
-    let content: Content
+// MARK: - Placeholder Settings View
 
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
+private struct PlaceholderSettingsView: View {
+    let title: String
+    let icon: String
+    let description: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: icon)
+                .font(.system(size: 48))
+                .foregroundStyle(.tertiary)
             Text(title)
-                .font(.system(size: 16, weight: .semibold, design: .default))
-                .foregroundStyle(.primary)
-
-            content
+                .font(.title3.weight(.semibold))
+            Text(description)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            Text("Coming soon")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(Color(.tertiarySystemGroupedBackground)))
+            Spacer()
         }
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.large)
     }
 }
+
+// MARK: - Face ID Consent Sheet
 
 private struct FaceIdDisableConsentSheet: View {
     let onConsent: () -> Void
@@ -116,12 +202,12 @@ private struct FaceIdDisableConsentSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Turning off Face ID?")
-                .font(.system(size: 24, weight: .bold, design: .default))
+                .font(.system(size: 24, weight: .bold))
                 .foregroundStyle(.red)
                 .padding(.top, 6)
 
-            Text(loremIpsum)
-                .font(.system(size: 15, weight: .regular, design: .default))
+            Text("Disabling Face ID means anyone with access to your device can open the app without biometric verification. Your data will still be protected by your account password, but the app will no longer require Face ID to unlock.")
+                .font(.system(size: 15))
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
 
@@ -134,7 +220,7 @@ private struct FaceIdDisableConsentSheet: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: onCancel) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 28, weight: .regular))
+                        .font(.system(size: 28))
                         .foregroundStyle(.secondary)
                         .symbolRenderingMode(.hierarchical)
                 }
@@ -142,30 +228,25 @@ private struct FaceIdDisableConsentSheet: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            GeometryReader { proxy in
-                Button(action: onConsent) {
-                    Text("I consent")
-                        .font(.system(size: 17, weight: .semibold, design: .default))
-                        .foregroundStyle(.white)
-                        .frame(width: proxy.size.width * 0.9, height: 52)
-                        .background(Color.accentColor)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            Button(action: onConsent) {
+                Text("I consent")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color.accentColor, in: Capsule())
             }
-            .frame(height: 64)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
         }
         .presentationBackground(.ultraThinMaterial)
         .presentationCornerRadius(28)
     }
 }
 
-private let loremIpsum = """
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer nec risus sit amet orci mollis tincidunt. Vivamus blandit, mauris in porta pulvinar, odio magna commodo justo, sed finibus lacus neque non tortor. Curabitur faucibus, lacus at blandit faucibus, lectus nulla eleifend tortor, sit amet auctor nibh neque at enim. Aenean tempus sodales velit, vel facilisis libero finibus at. Sed vitae justo non lacus ultricies viverra. Proin vitae nisi ut nisl rhoncus maximus. Morbi id nibh id risus convallis laoreet. Aliquam erat volutpat. Quisque at mauris nec metus tristique lacinia. Suspendisse potenti. Fusce euismod, ligula quis viverra sollicitudin, risus sem maximus nulla, non semper justo lectus a ligula. Donec ac dolor dolor. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.
-"""
+// MARK: - Preview
 
 #Preview {
     SettingsView()
+        .environment(\.injected, .previewAuthenticated)
 }

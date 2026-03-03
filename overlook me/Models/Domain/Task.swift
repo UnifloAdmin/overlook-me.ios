@@ -290,6 +290,11 @@ extension Task {
         return Calendar.current.isDateInToday(dueDate)
     }
     
+    var isDueTomorrow: Bool {
+        guard let dueDate = dueDateTime else { return false }
+        return Calendar.current.isDateInTomorrow(dueDate)
+    }
+    
     var isScheduledToday: Bool {
         guard let scheduled = scheduledDate else { return false }
         return Calendar.current.isDateInToday(scheduled)

@@ -63,64 +63,50 @@ struct MainContainerView: View {
         }
         .tabBarMinimizeBehavior(.never)
         .sheet(isPresented: $showingSideNav, onDismiss: {
-            // Execute pending navigation after sheet is fully dismissed
-            print("📋 Sheet dismissed. Pending navigation: \(String(describing: pendingNavigation))")
-            
-            guard let pendingRoute = pendingNavigation else {
-                print("⚠️ No pending navigation, sheet was just closed")
-                return
-            }
-            
+            guard let pendingRoute = pendingNavigation else { return }
             pendingNavigation = nil
-            
-            // Give the sheet animation time to fully complete
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                print("🚀 Executing navigation to: \(pendingRoute)")
                 open(pendingRoute)
             }
         }) {
             SideNavigationView(
                 isPresented: $showingSideNav,
                 onSelectRoute: { route in
-                    // Store the route - navigation will happen in onDismiss
-                    print("✅ Route selected in callback: \(route)")
                     pendingNavigation = route
                 }
             )
         }
         .onChange(of: selection) { oldValue, newValue in
-            print("🔀 Selection changed: \(oldValue) → \(newValue)")
             if newValue == .searchProxy {
                 showingSideNav = true
                 selection = oldValue == .searchProxy ? .home : oldValue
                 return
             }
-            
             if tabBar.config.messages == nil && newValue == .messages {
                 selection = oldValue
             }
-            
             if tabBar.config.alerts == nil && newValue == .notifications {
                 selection = oldValue
             }
         }
+        .onChange(of: homePath) { _, newPath in
+            // Reset tab bar config when user pops all the way back to the landing screen
+            if newPath.isEmpty && tabBar.config != .dailyHabits && tabBar.config != .tasks {
+                tabBar.config = .default
+            }
+        }
         .onChange(of: tabBar.config) { oldValue, newValue in
-            // Prevent redundant updates if config hasn't actually changed
             guard oldValue != newValue else { return }
-            
-            print("⚙️ TabBar config changed: \(oldValue) → \(newValue)")
-            
-            // Clear navigation path when entering dailyHabits, tasks, health, bankAccounts, or transactions mode
-            if newValue == .dailyHabits || newValue == .tasks || newValue == .health || newValue == .bankAccounts || newValue == .transactions {
+            if newValue == .dailyHabits || newValue == .tasks || newValue == .health ||
+               newValue == .bankAccounts || newValue == .transactions || newValue == .notifications {
                 homePath = NavigationPath()
             }
-            
-            // Clear path when leaving dailyHabits, tasks, health, bankAccounts, or transactions mode
-            if (oldValue == .dailyHabits || oldValue == .tasks || oldValue == .health || oldValue == .bankAccounts || oldValue == .transactions) && newValue != oldValue {
+            if (oldValue == .dailyHabits || oldValue == .tasks || oldValue == .health ||
+                oldValue == .bankAccounts || oldValue == .transactions || oldValue == .notifications)
+                && newValue != oldValue {
                 homePath = NavigationPath()
                 selection = .home
             }
-            
             if newValue.messages == nil && selection == .messages {
                 selection = .home
             }
@@ -128,170 +114,46 @@ struct MainContainerView: View {
     }
     
     private func open(_ route: SideNavRoute) {
-        print("🔄 open() called with route: \(route)")
-        
-        if route == .dailyHabits {
-            // Switch the entire experience into the dedicated Daily Habits tab
-            print("📱 Switching to Daily Habits mode")
-            
-            // Batch all state changes together to avoid multiple updates per frame
-            let needsConfigChange = tabBar.config != .dailyHabits
-            
-            // Clear path first
-            homePath = NavigationPath()
-            
-            // Then set selection if needed
-            if selection != .home {
-                selection = .home
-            }
-            
-            // Finally update config if needed with a slight delay to avoid same-frame updates
-            if needsConfigChange {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
-                    transaction.disablesAnimations = false
-                    withTransaction(transaction) {
-                        self.tabBar.config = .dailyHabits
-                    }
-                }
-            }
-            return
+        switch route {
+        case .dailyHabits:
+            switchMode(to: .dailyHabits)
+        case .tasks:
+            switchMode(to: .tasks)
+        case .healthDashboard, .healthInsights, .fitness:
+            switchMode(to: .health)
+        case .bankAccounts:
+            switchMode(to: .bankAccounts)
+        case .transactions:
+            switchMode(to: .transactions)
+        case .notificationManage:
+            switchMode(to: .notifications)
+        default:
+            pushRoute(route)
         }
-        
-        if route == .tasks {
-            // Switch the entire experience into the dedicated Tasks tab
-            print("📱 Switching to Tasks mode")
-            
-            // Batch all state changes together to avoid multiple updates per frame
-            let needsConfigChange = tabBar.config != .tasks
-            
-            // Clear path first
-            homePath = NavigationPath()
-            
-            // Then set selection if needed
-            if selection != .home {
-                selection = .home
-            }
-            
-            // Finally update config if needed with a slight delay to avoid same-frame updates
-            if needsConfigChange {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
-                    transaction.disablesAnimations = false
-                    withTransaction(transaction) {
-                        self.tabBar.config = .tasks
-                    }
-                }
-            }
-            return
+    }
+
+    private func switchMode(to config: TabBarConfiguration) {
+        guard tabBar.config != config else { return }
+        homePath = NavigationPath()
+        selection = .home
+        withAnimation(.easeInOut(duration: 0.3)) {
+            tabBar.config = config
         }
-        
-        if route == .healthDashboard || route == .healthInsights {
-            // Switch the entire experience into the dedicated Health tab
-            print("📱 Switching to Health mode")
-            
-            // Batch all state changes together to avoid multiple updates per frame
-            let needsConfigChange = tabBar.config != .health
-            
-            // Clear path first
+    }
+
+    private func pushRoute(_ route: SideNavRoute) {
+        let needsReset = tabBar.config != .default
+        if needsReset {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                tabBar.config = .default
+            }
+            selection = .home
             homePath = NavigationPath()
-            
-            // Switch to the alerts tab (where health content is)
-            if selection != .notifications {
-                selection = .notifications
-            }
-            
-            // Finally update config if needed with a slight delay to avoid same-frame updates
-            if needsConfigChange {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
-                    transaction.disablesAnimations = false
-                    withTransaction(transaction) {
-                        self.tabBar.config = .health
-                    }
-                }
-            }
-            return
-        }
-        
-        if route == .bankAccounts {
-            // Switch the entire experience into the dedicated Bank Accounts mode
-            print("📱 Switching to Bank Accounts mode")
-            
-            let needsConfigChange = tabBar.config != .bankAccounts
-            
-            homePath = NavigationPath()
-            
-            if selection != .home {
-                selection = .home
-            }
-            
-            if needsConfigChange {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
-                    transaction.disablesAnimations = false
-                    withTransaction(transaction) {
-                        self.tabBar.config = .bankAccounts
-                    }
-                }
-            }
-            return
-        }
-        
-        if route == .transactions {
-            // Switch the entire experience into the dedicated Transactions mode
-            print("📱 Switching to Transactions mode")
-            
-            let needsConfigChange = tabBar.config != .transactions
-            
-            homePath = NavigationPath()
-            
-            if selection != .home {
-                selection = .home
-            }
-            
-            if needsConfigChange {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    var transaction = Transaction(animation: .easeInOut(duration: 0.35))
-                    transaction.disablesAnimations = false
-                    withTransaction(transaction) {
-                        self.tabBar.config = .transactions
-                    }
-                }
-            }
-            return
-        }
-        
-        print("📱 Navigating to: \(route)")
-        
-        // For other routes, ensure we're in default mode and coordinate navigation
-        let needsConfigReset = tabBar.config == .dailyHabits || tabBar.config == .tasks || tabBar.config == .health || tabBar.config == .bankAccounts || tabBar.config == .transactions
-        
-        if needsConfigReset {
-            // Reset from dailyHabits, tasks, or health mode
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                var transaction = Transaction(animation: .easeInOut(duration: 0.35))
-                transaction.disablesAnimations = false
-                withTransaction(transaction) {
-                    self.tabBar.config = .default
-                    self.selection = .home
-                }
-                
-                // Add route to path after config change settles
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    self.homePath.append(route)
-                }
-            }
         } else {
-            // Normal navigation
-            if selection != .home {
-                selection = .home
-            }
-            
-            // Small delay to ensure tab selection completes before navigation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.homePath.append(route)
-            }
+            selection = .home
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (needsReset ? 0.35 : 0.1)) {
+            self.homePath.append(route)
         }
     }
     
@@ -305,6 +167,16 @@ struct MainContainerView: View {
         } else if tabBar.config == .transactions {
             NavigationStack {
                 TransactionsView(viewModel: transactionsViewModel, tab: .analytics)
+            }
+        } else if tabBar.config == .notifications {
+            NavigationStack {
+                NotificationsManageView()
+                    .tabBarConfig(.notifications)
+            }
+        } else if tabBar.config == .health {
+            NavigationStack {
+                FitnessView()
+                    .tabBarConfig(.health)
             }
         } else {
             HomeView(path: $homePath)
@@ -332,9 +204,22 @@ struct MainContainerView: View {
             NavigationStack {
                 TransactionsView(viewModel: transactionsViewModel, tab: .ledger)
             }
+        } else if tabBar.config == .notifications {
+            NavigationStack {
+                DevicesManageView()
+                    .tabBarConfig(.notifications)
+            }
+        } else if tabBar.config == .health {
+            NavigationStack {
+                Text("Trends")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .navigationTitle("Trends")
+                    .tabBarConfig(.health)
+            }
         } else {
             NavigationStack {
-                FocusView()
+                TodayPlaceholderView()
                     .tabBarConfig(.default)
             }
         }
@@ -352,19 +237,22 @@ struct MainContainerView: View {
                 TaskAnalyticsView()
                     .tabBarConfig(.tasks)
             }
-        } else if tabBar.config == .health {
-            NavigationStack {
-                HealthInsightsView()
-                    .tabBarConfig(.health)
-            }
         } else if tabBar.config == .transactions {
             NavigationStack {
                 TransactionsView(viewModel: transactionsViewModel, tab: .merchants)
             }
+        } else if tabBar.config == .health {
+            NavigationStack {
+                Text("Trends")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .navigationTitle("Trends")
+                    .tabBarConfig(.health)
+            }
         } else {
             NavigationStack {
-                HealthView()
-                    .tabBarConfig(.health)
+                HealthInsightsView()
+                    .tabBarConfig(.default)
             }
         }
     }
@@ -396,7 +284,25 @@ private enum AppTab: Hashable {
     case searchProxy
 }
 
-// MARK: - Placeholder View
+// MARK: - Today Placeholder
+
+private struct TodayPlaceholderView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "calendar")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("Today")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Your daily overview is coming soon.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
+    }
+}
 
 // MARK: - Preview
 

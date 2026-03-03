@@ -24,7 +24,14 @@ struct URLSessionAPIClient: APIClient {
         self.jsonEncoder = jsonEncoder
         
         var decoder = jsonDecoder
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Use custom key decoding to handle PascalCase from .NET backend
+        decoder.keyDecodingStrategy = .custom { codingPath in
+            let key = codingPath.last!.stringValue
+            // Convert PascalCase to camelCase: "TotalCount" -> "totalCount"
+            guard let first = key.first else { return AnyKey(stringValue: key)! }
+            let camelCase = first.lowercased() + key.dropFirst()
+            return AnyKey(stringValue: camelCase)!
+        }
         self.jsonDecoder = decoder
     }
 
@@ -125,3 +132,18 @@ private struct AnyEncodable: Encodable {
     }
 }
 
+/// Generic CodingKey implementation for custom key decoding strategies.
+private struct AnyKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+    
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}

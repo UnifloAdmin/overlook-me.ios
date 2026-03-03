@@ -2,9 +2,49 @@ import Foundation
 import Combine
 import SwiftUI
 
+// MARK: - Habit Mode
+
+enum HabitMode: String, CaseIterable, Identifiable {
+    case regular
+    case challenge21
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .regular: return "Regular Habit"
+        case .challenge21: return "21-Day Challenge"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .regular: return "Build a lasting routine at your own pace"
+        case .challenge21: return "Commit for 21 days to forge a new habit"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .regular: return "repeat.circle.fill"
+        case .challenge21: return "flame.circle.fill"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .regular: return .blue
+        case .challenge21: return .orange
+        }
+    }
+
+    var challengeDays: Int { 21 }
+}
+
 // MARK: - Draft + Options
 
 struct HabitFormDraft {
+    var mode: HabitMode = .regular
     var name: String = ""
     var description: String = ""
     var category: HabitCategoryOption = .default
@@ -29,7 +69,25 @@ struct HabitFormDraft {
     var motivation: String = ""
     var reward: String = ""
     var tags: String = ""
-    
+
+    mutating func applyMode(_ newMode: HabitMode) {
+        mode = newMode
+        switch newMode {
+        case .challenge21:
+            isIndefinite = false
+            frequency = .daily
+            let today = Calendar.current.startOfDay(for: Date())
+            startDate = today
+            expiryDate = Calendar.current.date(byAdding: .day, value: newMode.challengeDays, to: today)
+            endDate = expiryDate
+        case .regular:
+            isIndefinite = true
+            expiryDate = nil
+            startDate = nil
+            endDate = nil
+        }
+    }
+
     var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
