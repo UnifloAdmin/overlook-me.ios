@@ -121,6 +121,17 @@ extension SubTasksAPI {
         )
     }
 
+    /// GET `/SubTasks?taskId=...` — typed response for a specific task's subtasks
+    func getSubTasksForTask(taskId: String) async throws -> [SubTaskDTO] {
+        try await client.request(
+            .get,
+            path: "SubTasks",
+            query: ["taskId": taskId],
+            headers: [:],
+            body: nil
+        )
+    }
+
     /// GET `/SubTasks?subTaskId=...`
     func getSubTaskById(_ subTaskId: String) async throws -> SubTaskDTO {
         try await client.request(

@@ -1,10 +1,9 @@
 import SwiftUI
 
 struct TaskBacklogsView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.injected) private var container
 
-    @State private var selectedFilter: BacklogFilter = .completed
+    @State private var selectedFilter: BacklogFilter = .unscheduled
     @State private var searchText = ""
 
     private var tasks: [Task] { container.appState.state.tasks.tasks }
@@ -12,6 +11,10 @@ struct TaskBacklogsView: View {
     private var filteredTasks: [Task] {
         let base: [Task]
         switch selectedFilter {
+        case .unscheduled:
+            base = tasks
+                .filter { $0.status == .pending && $0.dueDateTime == nil }
+                .sorted { $0.updatedAt > $1.updatedAt }
         case .completed: base = tasks.filter { $0.status == .completed }.sorted { $0.updatedAt > $1.updatedAt }
         case .cancelled: base = tasks.filter { $0.status == .cancelled }.sorted { $0.updatedAt > $1.updatedAt }
         case .onHold: base = tasks.filter { $0.status == .onHold }.sorted { $0.updatedAt > $1.updatedAt }
@@ -21,29 +24,37 @@ struct TaskBacklogsView: View {
     }
 
     enum BacklogFilter: String, CaseIterable, Identifiable {
-        case completed, cancelled, onHold
+        case unscheduled, completed, cancelled, onHold
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .completed: return "Completed"; case .cancelled: return "Cancelled"; case .onHold: return "On Hold"
+            case .unscheduled: return "Unscheduled"
+            case .completed: return "Completed"
+            case .cancelled: return "Cancelled"
+            case .onHold: return "On Hold"
             }
         }
         var icon: String {
             switch self {
-            case .completed: return "checkmark.circle.fill"; case .cancelled: return "xmark.circle.fill"; case .onHold: return "pause.circle.fill"
+            case .unscheduled: return "tray.fill"
+            case .completed: return "checkmark.circle.fill"
+            case .cancelled: return "xmark.circle.fill"
+            case .onHold: return "pause.circle.fill"
             }
         }
         var tint: Color {
             switch self {
-            case .completed: return .green; case .cancelled: return .red; case .onHold: return .orange
+            case .unscheduled: return TasksKalshiStyle.secondaryText
+            case .completed: return .green
+            case .cancelled: return .red
+            case .onHold: return .orange
             }
         }
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            gradientLayer
+            TasksKalshiStyle.pageBackground.ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
@@ -53,12 +64,11 @@ struct TaskBacklogsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
-                .padding(.top, 130)
+                .padding(.top, 16)
                 .padding(.bottom, 48)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         }
-        .ignoresSafeArea(edges: .top)
         .navigationTitle("Backlogs")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search backlogs")
@@ -67,7 +77,8 @@ struct TaskBacklogsView: View {
     // MARK: - Header
 
     private var headerStats: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
+            statBubble(count: tasks.filter { $0.status == .pending && $0.dueDateTime == nil }.count, label: "Unscheduled", color: TasksKalshiStyle.secondaryText)
             statBubble(count: tasks.filter { $0.status == .completed }.count, label: "Done", color: .green)
             statBubble(count: tasks.filter { $0.status == .cancelled }.count, label: "Cancelled", color: .red)
             statBubble(count: tasks.filter { $0.status == .onHold }.count, label: "On Hold", color: .orange)
@@ -78,26 +89,24 @@ struct TaskBacklogsView: View {
     private func statBubble(count: Int, label: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text("\(count)")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(headerTextColor)
+                .font(.system(size: 23, weight: .bold))
+                .foregroundStyle(color)
                 .contentTransition(.numericText(value: Double(count)))
             Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(headerTextColor.opacity(0.7))
+                .font(.system(size: 10, weight: .semibold))
+                .kerning(0.6)
+                .foregroundStyle(TasksKalshiStyle.secondaryText)
+                .textCase(.uppercase)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var headerTextColor: Color {
-        colorScheme == .dark ? .white.opacity(0.9) : .white
     }
 
     // MARK: - Filter
 
     private var filterPicker: some View {
-        Picker("Filter", selection: $selectedFilter.animation(.spring(response: 0.3))) {
+        Picker("Filter", selection: $selectedFilter.animation(.easeInOut(duration: 0.12))) {
             ForEach(BacklogFilter.allCases) { f in
-                Label(f.label, systemImage: f.icon).tag(f)
+                Text(f.label).tag(f)
             }
         }
         .pickerStyle(.segmented)
@@ -111,17 +120,19 @@ struct TaskBacklogsView: View {
             VStack(spacing: 12) {
                 Image(systemName: selectedFilter.icon)
                     .font(.system(size: 40))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(TasksKalshiStyle.tertiaryText)
                 Text("No \(selectedFilter.label.lowercased()) tasks")
                     .font(.headline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TasksKalshiStyle.secondaryText)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 40)
+            .tasksDataCard(cornerRadius: 20)
         } else {
             HStack(spacing: 6) {
                 Text("\(filteredTasks.count) \(selectedFilter.label)")
-                    .font(.subheadline.bold())
+                    .font(.system(size: 10, weight: .semibold))
+                    .kerning(0.6)
                     .foregroundStyle(selectedFilter.tint)
                     .textCase(.uppercase)
             }
@@ -132,7 +143,6 @@ struct TaskBacklogsView: View {
                     BacklogCard(
                         task: task,
                         filter: selectedFilter,
-                        colorScheme: colorScheme,
                         onRestore: { restoreTask(task) },
                         onDelete: { deleteTask(task) }
                     )
@@ -151,7 +161,7 @@ struct TaskBacklogsView: View {
                 status: .pending, priority: nil, scheduledDate: nil, scheduledTime: nil,
                 dueDateTime: nil, estimatedDurationMinutes: nil, category: nil, project: nil,
                 tags: nil, color: nil, progressPercentage: 0, location: nil,
-                latitude: nil, longitude: nil, isProModeEnabled: nil, isFuture: nil
+                latitude: nil, longitude: nil, isProModeEnabled: nil, isFuture: nil, subtasks: nil
             )
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
@@ -165,23 +175,6 @@ struct TaskBacklogsView: View {
         }
     }
 
-    // MARK: - Gradient
-
-    private var gradientLayer: some View {
-        VStack(spacing: 0) {
-            BacklogsPalette.headerGradient(for: colorScheme)
-                .frame(height: 280)
-                .overlay(BacklogsPalette.highlightGradient(for: colorScheme))
-                .overlay(BacklogsPalette.glossOverlay(for: colorScheme))
-                .overlay(alignment: .bottom) {
-                    BacklogsPalette.fadeOverlay(for: colorScheme).frame(height: 98)
-                }
-                .frame(maxWidth: .infinity)
-            Spacer()
-        }
-        .allowsHitTesting(false)
-        .ignoresSafeArea()
-    }
 }
 
 // MARK: - Backlog Card
@@ -189,7 +182,6 @@ struct TaskBacklogsView: View {
 private struct BacklogCard: View {
     let task: Task
     let filter: TaskBacklogsView.BacklogFilter
-    let colorScheme: ColorScheme
     let onRestore: () -> Void
     let onDelete: () -> Void
 
@@ -218,38 +210,45 @@ private struct BacklogCard: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(task.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .strikethrough(filter == .completed)
-                    .foregroundStyle(filter == .cancelled ? .secondary : .primary)
+                    .foregroundStyle(filter == .cancelled ? TasksKalshiStyle.secondaryText : TasksKalshiStyle.primaryText)
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
                     if let cat = task.category, !cat.isEmpty {
-                        Text(cat).font(.caption2.weight(.medium)).foregroundStyle(.tertiary)
-                        Text("·").foregroundStyle(.quaternary)
+                        Text(cat).font(.system(size: 10, weight: .medium)).foregroundStyle(TasksKalshiStyle.tertiaryText)
+                        Text("·").foregroundStyle(TasksKalshiStyle.tertiaryText)
                     }
                     Text(Self.dateFormatter.string(from: task.updatedAt))
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(.system(size: 10, weight: .medium)).foregroundStyle(TasksKalshiStyle.tertiaryText)
                 }
             }
 
             Spacer(minLength: 0)
 
             Text(task.priority.rawValue.capitalized)
-                .font(.caption2.bold())
+                .font(.system(size: 10, weight: .bold))
+                .kerning(0.6)
                 .foregroundStyle(priorityColor(task.priority))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(TasksKalshiStyle.surfaceMuted, in: Capsule())
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(BacklogsPalette.cardBackground(for: colorScheme))
-                .shadow(color: BacklogsPalette.cardShadow(for: colorScheme), radius: 5, y: 3)
+                .fill(TasksKalshiStyle.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(TasksKalshiStyle.cardBorder, lineWidth: 1)
+                )
         )
         .contentShape(Rectangle())
         .onTapGesture {
             if swipeDirection != .none {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { dragOffset = 0; swipeDirection = .none }
+                withAnimation(.easeInOut(duration: 0.12)) { dragOffset = 0; swipeDirection = .none }
             }
         }
         .contextMenu {
@@ -273,7 +272,7 @@ private struct BacklogCard: View {
                 let vel = v.predictedEndTranslation.width - v.translation.width
                 let openRight = dragOffset > threshold / 2 || vel > 100
                 let openLeft = dragOffset < -threshold / 2 || vel < -100
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                withAnimation(.easeInOut(duration: 0.12)) {
                     if openRight { dragOffset = swipeWidth; swipeDirection = .right }
                     else if openLeft { dragOffset = -swipeWidth; swipeDirection = .left }
                     else { dragOffset = 0; swipeDirection = .none }
@@ -285,7 +284,7 @@ private struct BacklogCard: View {
         HStack {
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { dragOffset = 0; swipeDirection = .none }
+                withAnimation(.easeInOut(duration: 0.12)) { dragOffset = 0; swipeDirection = .none }
                 onRestore()
             } label: {
                 Image(systemName: "arrow.uturn.backward.circle.fill")
@@ -304,7 +303,7 @@ private struct BacklogCard: View {
             Spacer()
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { dragOffset = 0; swipeDirection = .none }
+                withAnimation(.easeInOut(duration: 0.12)) { dragOffset = 0; swipeDirection = .none }
                 onDelete()
             } label: {
                 Image(systemName: "trash.fill")
@@ -318,46 +317,15 @@ private struct BacklogCard: View {
     }
 
     private func priorityColor(_ p: TaskPriority) -> Color {
-        switch p { case .critical: return .red; case .high: return .orange; case .medium: return .blue; case .low: return .gray }
+        switch p {
+        case .critical: return TasksKalshiStyle.danger
+        case .high: return TasksKalshiStyle.warning
+        case .medium: return TasksKalshiStyle.today
+        case .low: return TasksKalshiStyle.secondaryText
+        }
     }
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f
     }()
-}
-
-// MARK: - Palette
-
-private enum BacklogsPalette {
-    private static let warm = Color(uiColor: .systemOrange).opacity(0.75)
-    private static let amber = Color(uiColor: .systemYellow).opacity(0.65)
-    private static let sage = Color(uiColor: .systemGreen).opacity(0.55)
-    private static let slate = Color(uiColor: .systemGray).opacity(0.5)
-
-    static func headerGradient(for cs: ColorScheme) -> LinearGradient {
-        LinearGradient(colors: stops(for: cs), startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-    static func highlightGradient(for cs: ColorScheme) -> LinearGradient {
-        let lo = cs == .dark ? 0.18 : 0.45; let to = cs == .dark ? 0.05 : 0.15
-        return LinearGradient(colors: [.white.opacity(lo), .white.opacity(to), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-    static func glossOverlay(for cs: ColorScheme) -> some View {
-        let oo = cs == .dark ? 0.28 : 0.6; let go = cs == .dark ? 0.2 : 0.45
-        return ZStack {
-            RadialGradient(colors: [.white.opacity(go), .white.opacity(0.08), .clear], center: .topLeading, startRadius: 24, endRadius: 420)
-            LinearGradient(colors: [.white.opacity(cs == .dark ? 0.2 : 0.35), .white.opacity(cs == .dark ? 0.04 : 0.05), .clear], startPoint: .top, endPoint: .bottom)
-        }.blendMode(cs == .dark ? .plusLighter : .screen).opacity(oo)
-    }
-    static func fadeOverlay(for cs: ColorScheme) -> LinearGradient {
-        LinearGradient(colors: [.clear, Color(.systemGroupedBackground)], startPoint: .top, endPoint: .bottom)
-    }
-    static func cardBackground(for cs: ColorScheme) -> Color {
-        cs == .dark ? Color(uiColor: .secondarySystemBackground) : Color(.systemBackground)
-    }
-    static func cardShadow(for cs: ColorScheme) -> Color {
-        .black.opacity(cs == .dark ? 0.45 : 0.08)
-    }
-    private static func stops(for cs: ColorScheme) -> [Color] {
-        cs == .dark ? [warm.opacity(0.65), amber.opacity(0.5), sage.opacity(0.45), slate.opacity(0.4)] : [warm, amber, sage, slate]
-    }
 }

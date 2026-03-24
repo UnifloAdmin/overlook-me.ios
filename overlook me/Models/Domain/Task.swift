@@ -6,6 +6,25 @@
 //
 
 import Foundation
+/// Domain model for Subtask
+struct Subtask: Identifiable, Codable, Sendable, Hashable {
+    var id = UUID()
+    var text: String
+    var completed: Bool
+    var order: Int
+    
+    init(from dto: SubtaskDTO) {
+        self.text = dto.text
+        self.completed = dto.completed
+        self.order = dto.order
+    }
+    
+    init(text: String, completed: Bool, order: Int) {
+        self.text = text
+        self.completed = completed
+        self.order = order
+    }
+}
 
 /// Domain model for Task
 struct Task: Identifiable, Codable, Sendable {
@@ -41,6 +60,8 @@ struct Task: Identifiable, Codable, Sendable {
     let importanceScore: Int
     let createdAt: Date
     let updatedAt: Date
+    
+    var subtasks: [Subtask]
     
     init(from dto: TaskDTO) {
         print("🏗️ [Task] Initializing from TaskDTO:")
@@ -102,14 +123,23 @@ struct Task: Identifiable, Codable, Sendable {
                 return date
             }
             
+            // Fallback for dates without timezone (e.g. "yyyy-MM-dd'T'HH:mm:ss")
+            let fallbackFormatter = DateFormatter()
+            fallbackFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            fallbackFormatter.locale = Locale(identifier: "en_US_POSIX")
+            fallbackFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            if let date = fallbackFormatter.date(from: dateString) {
+                print("✅ [Task] Parsed with fallback formatter: \(date)")
+                return date
+            }
+
             print("❌ [Task] Failed to parse date: '\(dateString)'")
             return nil
         }
         
         // Helper to normalize .NET DateTime strings
         func normalizeDotNetDateTime(_ dateString: String) -> String? {
-            // Match pattern: 2026-01-15T02:33:39.3980939
-            let pattern = #"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d+)$"#
+            let pattern = #"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d+)(Z|[+-]\d{2}:?\d{2})?$"#
             guard let regex = try? NSRegularExpression(pattern: pattern),
                   let match = regex.firstMatch(in: dateString, range: NSRange(dateString.startIndex..., in: dateString)) else {
                 return nil
@@ -126,7 +156,14 @@ struct Task: Identifiable, Codable, Sendable {
             // Truncate or pad to 3 digits
             let normalizedFraction = fraction.count > 3 ? String(fraction.prefix(3)) : fraction.padding(toLength: 3, withPad: "0", startingAt: 0)
             
-            return "\(datePart).\(normalizedFraction)Z"
+            let offsetPart: String
+            if match.numberOfRanges > 3, let offsetRange = Range(match.range(at: 3), in: dateString) {
+                offsetPart = String(dateString[offsetRange])
+            } else {
+                offsetPart = "Z"
+            }
+            
+            return "\(datePart).\(normalizedFraction)\(offsetPart)"
         }
         
         print("🔍 [Task] DTO fields - scheduledDate: \(dto.scheduledDate ?? "nil"), dueDateTime: \(dto.dueDateTime ?? "nil")")
@@ -170,7 +207,9 @@ struct Task: Identifiable, Codable, Sendable {
         self.createdAt = parseDate(dto.createdAt) ?? Date()
         self.updatedAt = parseDate(dto.updatedAt) ?? Date()
         
-        print("✅ [Task] Initialized with status: \(self.status.rawValue), priority: \(self.priority.rawValue)")
+        self.subtasks = dto.subtasks?.map { Subtask(from: $0) }.sorted { $0.order < $1.order } ?? []
+        
+        print("✅ [Task] Initialized with status: \(self.status.rawValue), priority: \(self.priority.rawValue), subtasks: \(self.subtasks.count)")
     }
     
     init(from dto: AutoSaveTaskResponseDTO) {
@@ -226,14 +265,23 @@ struct Task: Identifiable, Codable, Sendable {
                 return date
             }
             
+            // Fallback for dates without timezone (e.g. "yyyy-MM-dd'T'HH:mm:ss")
+            let fallbackFormatter = DateFormatter()
+            fallbackFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            fallbackFormatter.locale = Locale(identifier: "en_US_POSIX")
+            fallbackFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            if let date = fallbackFormatter.date(from: dateString) {
+                print("✅ [Task] Parsed with fallback formatter: \(date)")
+                return date
+            }
+
             print("❌ [Task] Failed to parse date: '\(dateString)'")
             return nil
         }
         
         // Helper to normalize .NET DateTime strings
         func normalizeDotNetDateTime(_ dateString: String) -> String? {
-            // Match pattern: 2026-01-15T02:33:39.3980939
-            let pattern = #"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d+)$"#
+            let pattern = #"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d+)(Z|[+-]\d{2}:?\d{2})?$"#
             guard let regex = try? NSRegularExpression(pattern: pattern),
                   let match = regex.firstMatch(in: dateString, range: NSRange(dateString.startIndex..., in: dateString)) else {
                 return nil
@@ -250,7 +298,14 @@ struct Task: Identifiable, Codable, Sendable {
             // Truncate or pad to 3 digits
             let normalizedFraction = fraction.count > 3 ? String(fraction.prefix(3)) : fraction.padding(toLength: 3, withPad: "0", startingAt: 0)
             
-            return "\(datePart).\(normalizedFraction)Z"
+            let offsetPart: String
+            if match.numberOfRanges > 3, let offsetRange = Range(match.range(at: 3), in: dateString) {
+                offsetPart = String(dateString[offsetRange])
+            } else {
+                offsetPart = "Z"
+            }
+            
+            return "\(datePart).\(normalizedFraction)\(offsetPart)"
         }
         
         self.scheduledDate = parseDate(dto.scheduledDate)
@@ -276,6 +331,8 @@ struct Task: Identifiable, Codable, Sendable {
         self.importanceScore = Int(dto.importanceScore ?? 50)
         self.createdAt = parseDate(dto.createdAt) ?? Date()
         self.updatedAt = parseDate(dto.updatedAt) ?? Date()
+        
+        self.subtasks = dto.subtasks?.map { Subtask(from: $0) }.sorted { $0.order < $1.order } ?? []
     }
 }
 

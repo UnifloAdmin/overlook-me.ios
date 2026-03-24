@@ -1,45 +1,64 @@
 import Foundation
 
 enum APIConfiguration {
+    // ──────────────────────────────────────────────
+    // MARK: – Base URL (uniflo.api)
+    // ──────────────────────────────────────────────
     static let baseURL: URL = {
-        #if targetEnvironment(simulator)
-        let url = URL(string: "https://eyrie.overlookme.com/api")!
-        print("[APIConfiguration] SIMULATOR DETECTED - Using staging: \(url.absoluteString)")
-        return url
-        #else
-        let url = URL(string: "https://eyrie.overlookme.com/api")!
-        print("[APIConfiguration] DEVICE/PRODUCTION - Using production: \(url.absoluteString)")
-        return url
-        #endif
+        switch ServerEnvironment.current {
+        case .local:
+            // uniflo.api runs on http://localhost:5273
+            let url = URL(string: "http://localhost:5273/api")!
+            print("[APIConfiguration] LOCAL - Using localhost: \(url.absoluteString)")
+            return url
+        case .staging:
+            let url = URL(string: "https://eyrie.overlookme.com/api")!
+            print("[APIConfiguration] STAGING - Using staging: \(url.absoluteString)")
+            return url
+        case .production:
+            let url = URL(string: "https://eyrie.overlookme.com/api")!
+            print("[APIConfiguration] PRODUCTION - Using production: \(url.absoluteString)")
+            return url
+        }
     }()
 
+    // ──────────────────────────────────────────────
+    // MARK: – Response Encoding
+    // ──────────────────────────────────────────────
     static let responseEncoding: ResponseEncodingConfiguration = {
-        #if targetEnvironment(simulator)
-        print("[APIConfiguration] SIMULATOR - Encryption DISABLED for debugging")
-        return ResponseEncodingConfiguration(
-            enabled: false,
-            encodingType: .aes,
-            encryptionKey: "Unif10@2024#SecureAES256Key!$"
-        )
-        #else
-        print("[APIConfiguration] PRODUCTION - Encryption ENABLED")
-        return ResponseEncodingConfiguration(
-            enabled: true,
-            encodingType: .aes,
-            encryptionKey: "Unif10@2024#SecureAES256Key!$"
-        )
-        #endif
+        switch ServerEnvironment.current {
+        case .local:
+            print("[APIConfiguration] LOCAL - Encryption DISABLED for debugging")
+            return ResponseEncodingConfiguration(
+                enabled: false,
+                encodingType: .aes,
+                encryptionKey: "Unif10@2024#SecureAES256Key!$"
+            )
+        case .staging:
+            print("[APIConfiguration] STAGING - Encryption DISABLED for debugging")
+            return ResponseEncodingConfiguration(
+                enabled: false,
+                encodingType: .aes,
+                encryptionKey: "Unif10@2024#SecureAES256Key!$"
+            )
+        case .production:
+            print("[APIConfiguration] PRODUCTION - Encryption ENABLED")
+            return ResponseEncodingConfiguration(
+                enabled: true,
+                encodingType: .aes,
+                encryptionKey: "Unif10@2024#SecureAES256Key!$"
+            )
+        }
     }()
     
+    // ──────────────────────────────────────────────
+    // MARK: – Debug Helper
+    // ──────────────────────────────────────────────
     static func printConfiguration() {
         print("=" * 60)
         print("API Configuration Status")
         print("=" * 60)
-        #if targetEnvironment(simulator)
-        print("Environment: iOS Simulator")
-        #else
-        print("Environment: Physical Device")
-        #endif
+        print("Environment: \(ServerEnvironment.current)")
         print("Base URL: \(baseURL.absoluteString)")
         print("Encryption Enabled: \(responseEncoding.enabled)")
         print("=" * 60)

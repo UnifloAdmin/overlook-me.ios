@@ -16,6 +16,36 @@ enum TaskStatus: String, Codable, Sendable {
     case completed
     case cancelled
     case onHold = "on_hold"
+
+    var displayName: String {
+        switch self {
+        case .pending: return "Pending"
+        case .inProgress: return "In Progress"
+        case .completed: return "Completed"
+        case .cancelled: return "Cancelled"
+        case .onHold: return "On Hold"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .pending: return "circle"
+        case .inProgress: return "arrow.trianglehead.clockwise"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle"
+        case .onHold: return "pause.circle"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .pending:    return "Pending"
+        case .inProgress: return "In Progress"
+        case .completed:  return "Done"
+        case .cancelled:  return "Cancelled"
+        case .onHold:     return "On Hold"
+        }
+    }
 }
 
 enum TaskPriority: String, Codable, Sendable {
@@ -59,6 +89,14 @@ struct TaskDTO: Codable, Sendable, Identifiable {
     let importanceScore: Int?
     let createdAt: String?
     let updatedAt: String?
+    
+    let subtasks: [SubtaskDTO]?
+}
+
+struct SubtaskDTO: Codable, Sendable {
+    let text: String
+    let completed: Bool
+    let order: Int
 }
 
 struct TaskReminderDTO: Codable, Sendable {
@@ -91,6 +129,7 @@ struct AutoSaveTaskRequestDTO: Codable, Sendable {
     let isProModeEnabled: Bool?
     let isFuture: Bool?
     let lastKnownUpdatedAt: String?
+    let subtasks: [SubtaskDTO]?
 }
 
 struct AutoSaveTaskResponseDTO: Codable, Sendable {
@@ -120,6 +159,8 @@ struct AutoSaveTaskResponseDTO: Codable, Sendable {
     let isNewTask: Bool
     let conflictDetected: Bool
     let conflictMessage: String?
+    
+    let subtasks: [SubtaskDTO]?
 }
 
 struct GetTasksRequestDTO: Codable, Sendable {

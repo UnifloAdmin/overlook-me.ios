@@ -1,47 +1,37 @@
 import SwiftUI
 
-struct AddNewTask: View {
+// MARK: - Add Subtask Sheet
+
+struct AddSubtaskSheet: View {
+    let parentTaskId: String
+    
     @Environment(\.dismiss) private var dismiss
     @Environment(\.injected) private var container
 
+    /// Called when the user confirms a new subtask. Passes back the new subtask title to be shown locally immediately.
+    var onAdd: (String) -> Void
+
     @State private var title = ""
     @State private var notes = ""
-    @State private var priority: TaskPriority = .medium
-    @State private var status: TaskStatus = .pending
+    @State private var priority: SubTaskPriority = .medium
+    @State private var status: SubTaskStatus = .pending
 
     @State private var hasDate = true
     @State private var dueDate = Date()
     @State private var hasTime = true
     @State private var dueTime = Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: Date()) ?? Date()
 
-    @State private var recurrenceFrequency: RecurrenceFrequency?
-    @State private var recurrenceEndDate: Date?
-    @State private var hasRecurrenceEnd = false
-
     @State private var hasEstimatedDuration = false
     @State private var estimatedMinutes = 30
-
-    @State private var category = ""
-    @State private var project = ""
-    @State private var tagsText = ""
-
-    @State private var hasLocation = false
-    @State private var location = ""
-
-    @State private var selectedColor = "#007AFF"
-    @State private var progress: Double = 0.0
     
-    @State private var isProMode = false
-    @State private var isFuture = false
+    @State private var assignedTo = ""
 
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showAdvanced = false
 
     @FocusState private var focusedField: Field?
-    private enum Field: Hashable { case title, notes, category, project, tags, location }
-
-    private let colors = ["#007AFF", "#FF9500", "#FF3B30", "#34C759", "#5856D6", "#FF2D55", "#5AC8FA", "#FFCC00"]
+    private enum Field: Hashable { case title, notes, assignedTo }
 
     var body: some View {
         NavigationStack {
@@ -49,17 +39,12 @@ struct AddNewTask: View {
                 VStack(spacing: 14) {
                     titleCard
                     dateTimeCard
-                    repeatCard
                     statusPriorityCard
                     advancedToggleCard
 
                     if showAdvanced {
                         durationCard
-                        organizationCard
-                        colorCard
-                        locationCard
-                        progressCard
-                        modeTogglesCard
+                        assignmentCard
                     }
 
                     if let error = errorMessage {
@@ -72,7 +57,7 @@ struct AddNewTask: View {
             }
             .background(TasksKalshiStyle.pageBackground.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("New Task")
+            .navigationTitle("New Subtask")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -84,7 +69,7 @@ struct AddNewTask: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        _Concurrency.Task { await saveTask() }
+                        _Concurrency.Task { await saveSubTask() }
                     } label: {
                         if isSaving {
                             ProgressView()
@@ -115,7 +100,7 @@ struct AddNewTask: View {
         VStack(spacing: 0) {
             inputRow(
                 icon: "checklist.unchecked",
-                placeholder: "Task title",
+                placeholder: "Subtask title",
                 text: $title,
                 field: .title,
                 weight: .semibold,
@@ -203,52 +188,6 @@ struct AddNewTask: View {
         .buttonStyle(.plain)
     }
 
-    private var repeatCard: some View {
-        sectionCard("Repeat") {
-            Menu {
-                Button("Never") { recurrenceFrequency = nil }
-                ForEach(RecurrenceFrequency.allCases) { freq in
-                    Button {
-                        recurrenceFrequency = freq
-                    } label: {
-                        Label(freq.label, systemImage: freq.icon)
-                    }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "repeat")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TasksKalshiStyle.today)
-                        .frame(width: 20)
-                    Text("Frequency")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(TasksKalshiStyle.primaryText)
-                    Spacer()
-                    Text(recurrenceFrequency?.label ?? "Never")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TasksKalshiStyle.secondaryText)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(TasksKalshiStyle.tertiaryText)
-                }
-                .padding(.vertical, 2)
-            }
-            .buttonStyle(.plain)
-
-            if recurrenceFrequency != nil {
-                rowDivider
-                toggleRow("End repeat", icon: "calendar.badge.minus", isOn: $hasRecurrenceEnd, iconColor: TasksKalshiStyle.warning)
-                if hasRecurrenceEnd {
-                    rowDivider
-                    compactDateRow("End date", selection: Binding(
-                        get: { recurrenceEndDate ?? Calendar.current.date(byAdding: .month, value: 3, to: Date())! },
-                        set: { recurrenceEndDate = $0 }
-                    ), components: .date)
-                }
-            }
-        }
-    }
-
     private var statusPriorityCard: some View {
         VStack(spacing: 0) {
             sectionHeader("Status")
@@ -256,20 +195,20 @@ struct AddNewTask: View {
                 .padding(.top, 14)
             
             Menu {
-                ForEach([TaskStatus.pending, .inProgress, .onHold, .completed, .cancelled], id: \.self) { s in
+                ForEach([SubTaskStatus.pending, .inProgress, .completed, .cancelled], id: \.self) { s in
                     Button {
                         status = s
                     } label: {
-                        Label(s.displayName, systemImage: s.iconName)
+                        Label(statusLabel(s), systemImage: statusIcon(s))
                     }
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: status.iconName)
+                    Image(systemName: statusIcon(status))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(TasksKalshiStyle.today)
                         .frame(width: 20)
-                    Text(status.displayName)
+                    Text(statusLabel(status))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(TasksKalshiStyle.primaryText)
                     Spacer()
@@ -289,7 +228,7 @@ struct AddNewTask: View {
                 .padding(.top, 14)
                 
             HStack(spacing: 0) {
-                ForEach([TaskPriority.low, .medium, .high, .critical], id: \.self) { p in
+                ForEach([SubTaskPriority.low, .medium, .high, .critical], id: \.self) { p in
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         withAnimation(.easeInOut(duration: 0.12)) { priority = p }
@@ -349,93 +288,10 @@ struct AddNewTask: View {
         }
     }
 
-    private var organizationCard: some View {
-        sectionCard("Organization") {
-            inputRow(icon: "folder", placeholder: "Category", text: $category, field: .category, next: .project)
-            rowDivider
-            inputRow(icon: "briefcase", placeholder: "Project", text: $project, field: .project, next: .tags)
-            rowDivider
-            inputRow(icon: "tag", placeholder: "Tags (comma separated)", text: $tagsText, field: .tags)
+    private var assignmentCard: some View {
+        sectionCard("Assignment") {
+            inputRow(icon: "person.crop.circle", placeholder: "Assigned To (User ID)", text: $assignedTo, field: .assignedTo)
         }
-    }
-
-    private var colorCard: some View {
-        sectionCard("Color") {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(colors, id: \.self) { hex in
-                        Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            selectedColor = hex
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color(hex: hex))
-                                    .frame(width: 26, height: 26)
-                                if selectedColor == hex {
-                                    Circle()
-                                        .strokeBorder(.white, lineWidth: 2.5)
-                                        .frame(width: 26, height: 26)
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .scaleEffect(selectedColor == hex ? 1.08 : 1)
-                        .animation(.easeInOut(duration: 0.12), value: selectedColor)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-        }
-    }
-
-    private var locationCard: some View {
-        sectionCard("Location") {
-            toggleRow("Attach location", icon: "location", isOn: $hasLocation, iconColor: TasksKalshiStyle.done)
-            if hasLocation {
-                rowDivider
-                inputRow(icon: "mappin", placeholder: "Location name", text: $location, field: .location)
-            }
-        }
-    }
-
-    private var progressCard: some View {
-        sectionCard("Progress") {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(TasksKalshiStyle.today)
-                        .frame(width: 20)
-                    Text("Completion")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(TasksKalshiStyle.primaryText)
-                    Spacer()
-                    Text("\(Int(progress))%")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(TasksKalshiStyle.secondaryText)
-                }
-                Slider(value: $progress, in: 0...100, step: 5)
-                    .tint(TasksKalshiStyle.done)
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
-    private var modeTogglesCard: some View {
-        VStack(spacing: 0) {
-            toggleRow("Pro Mode", icon: "star.fill", isOn: $isProMode, iconColor: TasksKalshiStyle.warning)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-            rowDivider
-            toggleRow("Future Task", icon: "calendar.badge.clock", isOn: $isFuture, iconColor: TasksKalshiStyle.primaryText)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-        }
-        .tasksDataCard()
     }
 
     private var advancedToggleCard: some View {
@@ -485,7 +341,7 @@ struct AddNewTask: View {
     }
 
     // MARK: - Reusable Rows
-
+    
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
             .font(.system(size: 10, weight: .semibold))
@@ -588,13 +444,9 @@ struct AddNewTask: View {
 
     // MARK: - Save
 
-    private func saveTask() async {
+    private func saveSubTask() async {
         isSaving = true
         errorMessage = nil
-
-        let now = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
 
         var finalDue: Date?
         if hasDate {
@@ -609,50 +461,43 @@ struct AddNewTask: View {
             finalDue = cal.date(from: comps)
         }
 
-        await container.interactors.tasksInteractor.createTask(
+        print("🔄 [AddSubtaskSheet] Saving subtask:")
+        print("   parentTaskId: \(parentTaskId)")
+        print("   title: \(title.trimmingCharacters(in: .whitespaces))")
+        print("   status: \(status.rawValue)")
+        print("   priority: \(priority.rawValue)")
+        print("   dueDateTime: \(finalDue?.description ?? "nil")")
+
+        await container.interactors.tasksInteractor.createSubTask(
+            taskId: parentTaskId,
             title: title.trimmingCharacters(in: .whitespaces),
-            description: notes.isEmpty ? nil : notes,
-            descriptionFormat: "plain",
+            description: notes.isEmpty ? nil : notes, // using 'notes' textfield for API 'description'
             status: status,
             priority: priority,
-            scheduledDate: now,
-            scheduledTime: formatter.string(from: now),
-            dueDateTime: finalDue,
             estimatedDurationMinutes: hasEstimatedDuration ? estimatedMinutes : nil,
-            category: category.isEmpty ? nil : category,
-            project: project.isEmpty ? nil : project,
-            tags: tagsText.isEmpty ? nil : tagsText,
-            color: selectedColor,
-            location: hasLocation ? location : nil,
-            latitude: nil,
-            longitude: nil,
-            isProModeEnabled: isProMode,
-            isFuture: isFuture,
-            subtasks: nil
+            dueDateTime: finalDue,
+            assignedTo: assignedTo.isEmpty ? nil : assignedTo,
+            notes: notes.isEmpty ? nil : notes // Also sending down in 'notes' for completeness since API has both
         )
-
-        if let freq = recurrenceFrequency,
-           let newId = container.appState.state.tasks.lastCreatedTaskId {
-            let recurrence = TaskRecurrence(
-                frequency: freq,
-                endDate: hasRecurrenceEnd ? recurrenceEndDate : nil
-            )
-            RecurrenceStore.set(recurrence, for: newId)
-        }
 
         isSaving = false
 
         if container.appState.state.tasks.error == nil {
+            print("✅ [AddSubtaskSheet] Subtask saved successfully")
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Immediately let parent know to show it locally
+            onAdd(title.trimmingCharacters(in: .whitespaces))
             dismiss()
         } else {
-            errorMessage = container.appState.state.tasks.error?.localizedDescription
+            let errDesc = container.appState.state.tasks.error?.localizedDescription ?? "Unknown error"
+            print("❌ [AddSubtaskSheet] Subtask save failed: \(errDesc)")
+            errorMessage = errDesc
         }
     }
 
     // MARK: - Helpers
 
-    private func priorityLabel(_ p: TaskPriority) -> String {
+    private func priorityLabel(_ p: SubTaskPriority) -> String {
         switch p {
         case .critical: return "Critical"
         case .high: return "High"
@@ -661,12 +506,30 @@ struct AddNewTask: View {
         }
     }
 
-    private func priorityColor(_ p: TaskPriority) -> Color {
+    private func priorityColor(_ p: SubTaskPriority) -> Color {
         switch p {
         case .critical: return TasksKalshiStyle.danger
         case .high: return TasksKalshiStyle.warning
         case .medium: return TasksKalshiStyle.today
         case .low: return TasksKalshiStyle.secondaryText
+        }
+    }
+    
+    private func statusLabel(_ s: SubTaskStatus) -> String {
+        switch s {
+        case .pending: return "Pending"
+        case .inProgress: return "In Progress"
+        case .completed: return "Completed"
+        case .cancelled: return "Cancelled"
+        }
+    }
+
+    private func statusIcon(_ s: SubTaskStatus) -> String {
+        switch s {
+        case .pending: return "circle"
+        case .inProgress: return "arrow.trianglehead.clockwise"
+        case .completed: return "checkmark.circle.fill"
+        case .cancelled: return "xmark.circle"
         }
     }
 
@@ -700,9 +563,4 @@ struct AddNewTask: View {
             dueTime = newTime
         }
     }
-}
-
-#Preview {
-    AddNewTask()
-        .environment(\.injected, DIContainer(appState: Store(AppState()), interactors: .stub))
 }

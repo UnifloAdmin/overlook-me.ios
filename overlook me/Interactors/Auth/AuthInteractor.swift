@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AuthenticationServices
 
 /// Result types for auth operations
 struct LoginResult {
@@ -38,6 +39,11 @@ protocol AuthInteractor {
     func getFullTwoFactorStatus() async -> TwoFactorStatusInfo?
     func getAuthenticatorDevices() async -> [AuthenticatorDevice]
     func removeAuthenticatorDevice(deviceId: String) async -> AuthResult
+    // Passkey
+    func loginWithPasskey() async -> AuthResult
+    func registerPasskey() async -> AuthResult
+    func listPasskeys() async -> [PasskeyCredential]
+    func deletePasskey(id: String) async -> AuthResult
 }
 
 struct TwoFactorSetupResult {
@@ -65,6 +71,7 @@ struct TwoFactorStatusInfo {
 struct RealAuthInteractor: AuthInteractor {
     let appState: Store<AppState>
     let repository: AuthRepository
+    let passkeyService = PasskeyService()
     
     func checkAuthentication() async {
         appState.state.auth.isLoading = true
@@ -269,6 +276,115 @@ struct RealAuthInteractor: AuthInteractor {
         }
     }
 
+    // MARK: - Passkey
+
+    func loginWithPasskey() async -> AuthResult {
+        appState.state.auth.isLoading = true
+        appState.state.auth.error = nil
+
+        do {
+            // 1. Begin – get challenge from server
+            let beginResponse = try await repository.beginPasskeyLogin()
+            let challengeData = base64URLDecode(beginResponse.options.challenge ?? "") ?? Data()
+            let rpId = beginResponse.options.resolvedRpId
+
+            // 2. System assertion via ASAuthorizationController
+            let assertion = try await passkeyService.authenticate(challengeData: challengeData, rpID: rpId)
+
+            // 3. Complete – send assertion to server
+            let assertionDict: [String: Any] = [
+                "id": base64URLEncode(assertion.credentialID),
+                "rawId": base64URLEncode(assertion.credentialID),
+                "type": "public-key",
+                "response": [
+                    "authenticatorData": base64URLEncode(assertion.rawAuthenticatorData),
+                    "clientDataJSON": base64URLEncode(assertion.rawClientDataJSON),
+                    "signature": base64URLEncode(assertion.signature),
+                    "userHandle": base64URLEncode(assertion.userID)
+                ] as [String: String]
+            ]
+
+            let response = try await repository.completePasskeyLogin(
+                challengeId: beginResponse.challengeId,
+                assertionResponse: assertionDict
+            )
+
+            handleAuthSuccess(response)
+            appState.state.auth.isLoading = false
+            return AuthResult(success: true, error: nil)
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            appState.state.auth.isLoading = false
+            return AuthResult(success: false, error: "Passkey sign-in was cancelled.")
+        } catch {
+            appState.state.auth.isLoading = false
+            return AuthResult(success: false, error: error.localizedDescription)
+        }
+    }
+
+    func registerPasskey() async -> AuthResult {
+        guard let token = try? KeychainHelper.retrieveString(for: .accessToken) else {
+            return AuthResult(success: false, error: "Not authenticated")
+        }
+
+        do {
+            // 1. Begin registration
+            let beginResponse = try await repository.beginPasskeyRegistration(accessToken: token)
+            let challengeData = base64URLDecode(beginResponse.options.challenge ?? "") ?? Data()
+            let rpId = beginResponse.options.resolvedRpId
+            let userIDData = base64URLDecode(beginResponse.options.user?.id ?? "") ?? Data()
+            let userName = beginResponse.options.user?.name ?? ""
+
+            // 2. System registration via ASAuthorizationController
+            let registration = try await passkeyService.register(
+                challengeData: challengeData,
+                userID: userIDData,
+                userName: userName,
+                rpID: rpId
+            )
+
+            // 3. Complete registration
+            let attestationDict: [String: Any] = [
+                "id": base64URLEncode(registration.credentialID),
+                "rawId": base64URLEncode(registration.credentialID),
+                "type": "public-key",
+                "response": [
+                    "attestationObject": base64URLEncode(registration.rawAttestationObject),
+                    "clientDataJSON": base64URLEncode(registration.rawClientDataJSON)
+                ] as [String: String]
+            ]
+
+            try await repository.completePasskeyRegistration(
+                accessToken: token,
+                challengeId: beginResponse.challengeId,
+                attestationResponse: attestationDict,
+                deviceName: UIDevice.current.name
+            )
+
+            return AuthResult(success: true, error: nil)
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            return AuthResult(success: false, error: "Passkey registration was cancelled.")
+        } catch {
+            return AuthResult(success: false, error: error.localizedDescription)
+        }
+    }
+
+    func listPasskeys() async -> [PasskeyCredential] {
+        guard let token = try? KeychainHelper.retrieveString(for: .accessToken) else { return [] }
+        return (try? await repository.listPasskeys(accessToken: token)) ?? []
+    }
+
+    func deletePasskey(id: String) async -> AuthResult {
+        guard let token = try? KeychainHelper.retrieveString(for: .accessToken) else {
+            return AuthResult(success: false, error: "Not authenticated")
+        }
+        do {
+            try await repository.deletePasskey(accessToken: token, id: id)
+            return AuthResult(success: true, error: nil)
+        } catch {
+            return AuthResult(success: false, error: error.localizedDescription)
+        }
+    }
+
     // MARK: - Private
     
     private func handleAuthSuccess(_ response: CAMAAuthResponse) {
@@ -304,6 +420,26 @@ struct RealAuthInteractor: AuthInteractor {
         appState.state.auth.user = user
         appState.state.auth.error = nil
     }
+
+    // MARK: - Base64URL helpers
+
+    private func base64URLDecode(_ string: String) -> Data? {
+        var base64 = string
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+        return Data(base64Encoded: base64)
+    }
+
+    private func base64URLEncode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
 }
 
 // MARK: - Stub Implementation
@@ -324,4 +460,8 @@ struct StubAuthInteractor: AuthInteractor {
     func getFullTwoFactorStatus() async -> TwoFactorStatusInfo? { TwoFactorStatusInfo(enabled: false, enabledAt: nil, recoveryCodesLeft: nil) }
     func getAuthenticatorDevices() async -> [AuthenticatorDevice] { [] }
     func removeAuthenticatorDevice(deviceId: String) async -> AuthResult { AuthResult(success: true, error: nil) }
+    func loginWithPasskey() async -> AuthResult { AuthResult(success: true, error: nil) }
+    func registerPasskey() async -> AuthResult { AuthResult(success: true, error: nil) }
+    func listPasskeys() async -> [PasskeyCredential] { [] }
+    func deletePasskey(id: String) async -> AuthResult { AuthResult(success: true, error: nil) }
 }

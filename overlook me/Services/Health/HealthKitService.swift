@@ -201,6 +201,15 @@ final class HealthKitService: ObservableObject {
         var awake: TimeInterval = 0
         var bedtimes: [Date] = []
         var wakeTimes: [Date] = []
+        var sleepStarts: [Date] = []  // Fallback for schedule from actual sleep samples
+        var sleepEnds: [Date] = []
+
+        let sleepValues: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
+            HKCategoryValueSleepAnalysis.asleep.rawValue
+        ]
 
         for sample in samples {
             let duration = sample.endDate.timeIntervalSince(sample.startDate)
@@ -209,15 +218,23 @@ final class HealthKitService: ObservableObject {
             case HKCategoryValueSleepAnalysis.asleepCore.rawValue:
                 totalSleep += duration
                 light += duration
+                sleepStarts.append(sample.startDate)
+                sleepEnds.append(sample.endDate)
             case HKCategoryValueSleepAnalysis.asleepDeep.rawValue:
                 totalSleep += duration
                 deep += duration
+                sleepStarts.append(sample.startDate)
+                sleepEnds.append(sample.endDate)
             case HKCategoryValueSleepAnalysis.asleepREM.rawValue:
                 totalSleep += duration
                 rem += duration
+                sleepStarts.append(sample.startDate)
+                sleepEnds.append(sample.endDate)
             case HKCategoryValueSleepAnalysis.asleep.rawValue:
                 totalSleep += duration
                 light += duration
+                sleepStarts.append(sample.startDate)
+                sleepEnds.append(sample.endDate)
             case HKCategoryValueSleepAnalysis.awake.rawValue:
                 awake += duration
             case HKCategoryValueSleepAnalysis.inBed.rawValue:
@@ -237,9 +254,13 @@ final class HealthKitService: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
 
-        if let earliest = bedtimes.min() {
-            let avgBedtime = formatter.string(from: earliest)
-            let avgWake = wakeTimes.max().map { formatter.string(from: $0) } ?? "--:--"
+        // Use inBed samples if available, otherwise fall back to actual sleep stage timestamps
+        let effectiveBedtime = bedtimes.min() ?? sleepStarts.min()
+        let effectiveWake = wakeTimes.max() ?? sleepEnds.max()
+
+        if let bedtime = effectiveBedtime {
+            let avgBedtime = formatter.string(from: bedtime)
+            let avgWake = effectiveWake.map { formatter.string(from: $0) } ?? "--:--"
             sleepSchedule = SleepScheduleData(avgBedtime: avgBedtime, avgWakeTime: avgWake)
         }
     }
@@ -272,9 +293,11 @@ final class HealthKitService: ObservableObject {
 
         let calendar = Calendar.current
         let now = Date()
-        guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: now)) else { return }
+        let startOfToday = calendar.startOfDay(for: now)
+        // Use -6 days for a 7-day window (matching fetchWeeklySum behavior)
+        guard let startDate = calendar.date(byAdding: .day, value: -6, to: startOfToday) else { return }
 
-        let predicate = HKQuery.predicateForSamples(withStart: weekAgo, end: now, options: .strictStartDate)
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
 
         let samples: [HKCategorySample] = await withCheckedContinuation { continuation in
             let query = HKSampleQuery(
@@ -288,30 +311,35 @@ final class HealthKitService: ObservableObject {
             healthStore.execute(query)
         }
 
-        var dailyTotals: [String: Double] = [:]
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateFormat = "EEE"
+        // Key by yyyy-MM-dd to avoid weekday name collisions across weeks
+        let dateKeyFormatter = DateFormatter()
+        dateKeyFormatter.dateFormat = "yyyy-MM-dd"
+        let dayLabelFormatter = DateFormatter()
+        dayLabelFormatter.dateFormat = "EEE"
 
+        let sleepValues: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
+            HKCategoryValueSleepAnalysis.asleep.rawValue
+        ]
+
+        var dailyTotals: [String: Double] = [:]
         for sample in samples {
-            let sleepValues: [Int] = [
-                HKCategoryValueSleepAnalysis.asleepCore.rawValue,
-                HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
-                HKCategoryValueSleepAnalysis.asleepREM.rawValue,
-                HKCategoryValueSleepAnalysis.asleep.rawValue
-            ]
             guard sleepValues.contains(sample.value) else { continue }
             let duration = sample.endDate.timeIntervalSince(sample.startDate) / 3600
-            let key = dayFormatter.string(from: sample.endDate)
+            let key = dateKeyFormatter.string(from: sample.endDate)
             dailyTotals[key, default: 0] += duration
         }
 
-        let todayLabel = dayFormatter.string(from: now)
         var points: [WeeklyDataPoint] = []
-        for i in (0..<7).reversed() {
-            guard let date = calendar.date(byAdding: .day, value: -i, to: now) else { continue }
-            let label = dayFormatter.string(from: date)
-            let value = dailyTotals[label] ?? 0
-            points.append(WeeklyDataPoint(label: label, value: round(value * 10) / 10, isToday: label == todayLabel))
+        for i in 0..<7 {
+            guard let date = calendar.date(byAdding: .day, value: i, to: startDate) else { continue }
+            let dateKey = dateKeyFormatter.string(from: date)
+            let label = dayLabelFormatter.string(from: date)
+            let value = dailyTotals[dateKey] ?? 0
+            let isToday = calendar.isDateInToday(date)
+            points.append(WeeklyDataPoint(label: label, value: round(value * 10) / 10, isToday: isToday))
         }
         weeklySleep = points
     }
@@ -337,9 +365,14 @@ final class HealthKitService: ObservableObject {
 
     private func fetchLatestHeartRate() async -> Int {
         guard let heartType = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return 0 }
+        // Only show heart rate from the last 24 hours so stale data doesn't appear as "current"
+        let predicate = HKQuery.predicateForSamples(
+            withStart: Calendar.current.date(byAdding: .hour, value: -24, to: Date()),
+            end: Date(), options: .strictStartDate
+        )
         return await withCheckedContinuation { continuation in
             let query = HKSampleQuery(
-                sampleType: heartType, predicate: nil, limit: 1,
+                sampleType: heartType, predicate: predicate, limit: 1,
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
             ) { _, samples, _ in
                 let hr = (samples?.first as? HKQuantitySample)?
@@ -352,9 +385,14 @@ final class HealthKitService: ObservableObject {
 
     private func fetchRestingHeartRate() async -> Int {
         guard let restingType = HKQuantityType.quantityType(forIdentifier: .restingHeartRate) else { return 0 }
+        // Only show resting HR from the last 7 days so stale data doesn't appear
+        let predicate = HKQuery.predicateForSamples(
+            withStart: Calendar.current.date(byAdding: .day, value: -7, to: Date()),
+            end: Date(), options: .strictStartDate
+        )
         return await withCheckedContinuation { continuation in
             let query = HKSampleQuery(
-                sampleType: restingType, predicate: nil, limit: 1,
+                sampleType: restingType, predicate: predicate, limit: 1,
                 sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]
             ) { _, samples, _ in
                 let hr = (samples?.first as? HKQuantitySample)?
@@ -564,8 +602,10 @@ final class HealthKitService: ObservableObject {
     private func fetchWeeklyWater() async {
         guard let waterType = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else { return }
         let raw = await fetchWeeklySum(for: waterType, unit: .liter())
+        // Convert liters to glasses (1 glass = 0.25L) using consistent Int truncation
+        // matching fetchWaterIntake which uses Int(liters / 0.25)
         weeklyWater = raw.map {
-            WeeklyDataPoint(label: $0.label, value: round($0.value / 0.25), isToday: $0.isToday)
+            WeeklyDataPoint(label: $0.label, value: Double(Int($0.value / 0.25)), isToday: $0.isToday)
         }
     }
 

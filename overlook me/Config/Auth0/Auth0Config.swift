@@ -9,7 +9,20 @@ import Foundation
 
 /// CAMA authentication API configuration
 enum CAMAConfig {
-    static let baseURL = "https://cama-prod.thankfulcoast-60df155d.eastus.azurecontainerapps.io/api"
+    // ──────────────────────────────────────────────
+    // MARK: – Base URL (CAMA)
+    // ──────────────────────────────────────────────
+    static let baseURL: String = {
+        switch ServerEnvironment.current {
+        case .local:
+            // CAMA runs on http://localhost:5091
+            return "http://localhost:5091/api"
+        case .staging:
+            return "https://cama-prod.thankfulcoast-60df155d.eastus.azurecontainerapps.io/api"
+        case .production:
+            return "https://cama-prod.thankfulcoast-60df155d.eastus.azurecontainerapps.io/api"
+        }
+    }()
     
     // Auth endpoints
     static var authURL: String { "\(baseURL)/Auth" }
@@ -22,6 +35,16 @@ enum CAMAConfig {
     static var confirmEmailURL: String { "\(authURL)/confirm-email" }
     static var resendVerificationURL: String { "\(authURL)/resend-verification-email" }
     static var emailStatusURL: String { "\(authURL)/email-status" }
+    
+    // Passwordless (passkey login) endpoints
+    static var passwordlessCheckURL: String { "\(authURL)/passwordless/check" }
+    static var passwordlessBeginURL: String { "\(authURL)/passwordless/begin" }
+    static var passwordlessCompleteURL: String { "\(authURL)/passwordless/complete" }
+    
+    // Passkey management endpoints
+    static var passkeyURL: String { "\(baseURL)/Passkey" }
+    static var passkeyRegisterBeginURL: String { "\(passkeyURL)/register/begin" }
+    static var passkeyRegisterCompleteURL: String { "\(passkeyURL)/register/complete" }
     
     // Two-factor endpoints
     static var twoFactorURL: String { "\(baseURL)/TwoFactor" }

@@ -55,6 +55,8 @@ struct ViewTask: View {
                 infoSection
                 deleteSection
             }
+            .scrollContentBackground(.hidden)
+            .background(TasksKalshiStyle.pageBackground)
             .navigationTitle("Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -69,7 +71,8 @@ struct ViewTask: View {
                             if isSaving {
                                 ProgressView().controlSize(.small)
                             } else {
-                                Text("Save").bold()
+                                Text("Save")
+                                    .font(.system(size: 12, weight: .semibold))
                             }
                         }
                         .transition(.scale.combined(with: .opacity))
@@ -79,7 +82,7 @@ struct ViewTask: View {
             .confirmationDialog("Delete this task?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { deleteTask() }
             }
-            .animation(.spring(response: 0.3), value: hasChanges)
+            .animation(.easeInOut(duration: 0.12), value: hasChanges)
             .onChange(of: editedTitle) { trackChange() }
             .onChange(of: editedNotes) { trackChange() }
             .onChange(of: editedPriority) { trackChange() }
@@ -101,7 +104,6 @@ struct ViewTask: View {
                 Image(systemName: statusIcon(editedStatus))
                     .font(.title3)
                     .foregroundStyle(statusColor(editedStatus))
-                    .symbolEffect(.bounce, value: editedStatus)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusLabel(editedStatus))
@@ -141,11 +143,12 @@ struct ViewTask: View {
     private var titleSection: some View {
         Section {
             TextField("Title", text: $editedTitle)
-                .font(.title3.weight(.semibold))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(TasksKalshiStyle.primaryText)
 
             TextField("Notes", text: $editedNotes, axis: .vertical)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(TasksKalshiStyle.secondaryText)
                 .lineLimit(3...8)
         }
     }
@@ -154,7 +157,7 @@ struct ViewTask: View {
 
     private var scheduleSection: some View {
         Section {
-            Toggle(isOn: $hasDueDate.animation(.spring(response: 0.3))) {
+            Toggle(isOn: $hasDueDate.animation(.easeInOut(duration: 0.12))) {
                 Label("Due Date", systemImage: "calendar")
                     .foregroundStyle(.red)
             }
@@ -175,7 +178,7 @@ struct ViewTask: View {
             }
 
             if recurrenceFrequency != nil {
-                Toggle(isOn: $hasRecurrenceEnd.animation(.spring(response: 0.3))) {
+                Toggle(isOn: $hasRecurrenceEnd.animation(.easeInOut(duration: 0.12))) {
                     Label("End Repeat", systemImage: "calendar.badge.minus")
                         .foregroundStyle(.orange)
                 }
@@ -198,21 +201,22 @@ struct ViewTask: View {
                     ForEach([TaskPriority.low, .medium, .high, .critical], id: \.self) { p in
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.25)) { editedPriority = p }
+                            withAnimation(.easeInOut(duration: 0.12)) { editedPriority = p }
                         } label: {
                             VStack(spacing: 3) {
                                 Image(systemName: p == .low ? "flag" : "flag.fill")
-                                    .font(.body)
-                                    .symbolEffect(.bounce, value: editedPriority == p)
+                                    .font(.system(size: 14, weight: .semibold))
                                 Text(priorityLabel(p))
-                                    .font(.caption2.bold())
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .kerning(0.6)
+                                    .textCase(.uppercase)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
-                            .foregroundStyle(editedPriority == p ? priorityColor(p) : .secondary)
+                            .foregroundStyle(editedPriority == p ? priorityColor(p) : TasksKalshiStyle.secondaryText)
                             .background {
                                 if editedPriority == p {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    RoundedRectangle(cornerRadius: 999, style: .continuous)
                                         .fill(priorityColor(p).opacity(0.12))
                                 }
                             }
@@ -250,7 +254,7 @@ struct ViewTask: View {
 
                 ProgressView(value: editedProgress, total: 100)
                     .tint(progressColor)
-                    .animation(.spring(response: 0.3), value: editedProgress)
+                    .animation(.easeInOut(duration: 0.12), value: editedProgress)
             }
         }
     }
@@ -279,11 +283,12 @@ struct ViewTask: View {
                 FlowLayout(spacing: 6) {
                     ForEach(task.tags, id: \.self) { tag in
                         Text(tag)
-                            .font(.caption.bold())
+                            .font(.system(size: 10, weight: .semibold))
+                            .kerning(0.6)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(Color.blue.opacity(0.1), in: Capsule())
-                            .foregroundStyle(.blue)
+                            .background(TasksKalshiStyle.todayBg, in: Capsule())
+                            .foregroundStyle(TasksKalshiStyle.today)
                     }
                 }
                 .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
@@ -362,7 +367,8 @@ struct ViewTask: View {
             latitude: nil,
             longitude: nil,
             isProModeEnabled: nil,
-            isFuture: nil
+            isFuture: nil,
+            subtasks: nil
         )
 
         if let freq = recurrenceFrequency {
@@ -389,11 +395,11 @@ struct ViewTask: View {
 
     private var progressColor: Color {
         switch editedProgress {
-        case 0..<25: return .red
-        case 25..<50: return .orange
-        case 50..<75: return .yellow
-        case 75..<100: return .blue
-        default: return .green
+        case 0..<25: return TasksKalshiStyle.danger
+        case 25..<50: return TasksKalshiStyle.warning
+        case 50..<75: return TasksKalshiStyle.secondaryText
+        case 75..<100: return TasksKalshiStyle.today
+        default: return TasksKalshiStyle.done
         }
     }
 
@@ -419,11 +425,11 @@ struct ViewTask: View {
 
     private func statusColor(_ s: TaskStatus) -> Color {
         switch s {
-        case .pending: return .gray
-        case .inProgress: return .blue
-        case .completed: return .green
-        case .cancelled: return .red
-        case .onHold: return .orange
+        case .pending: return TasksKalshiStyle.secondaryText
+        case .inProgress: return TasksKalshiStyle.today
+        case .completed: return TasksKalshiStyle.done
+        case .cancelled: return TasksKalshiStyle.danger
+        case .onHold: return TasksKalshiStyle.warning
         }
     }
 
@@ -438,10 +444,10 @@ struct ViewTask: View {
 
     private func priorityColor(_ p: TaskPriority) -> Color {
         switch p {
-        case .critical: return .red
-        case .high: return .orange
-        case .medium: return .blue
-        case .low: return .green
+        case .critical: return TasksKalshiStyle.danger
+        case .high: return TasksKalshiStyle.warning
+        case .medium: return TasksKalshiStyle.today
+        case .low: return TasksKalshiStyle.secondaryText
         }
     }
 

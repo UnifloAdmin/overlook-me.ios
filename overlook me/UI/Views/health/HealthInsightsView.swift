@@ -454,8 +454,10 @@ struct HealthInsightsView: View {
                     .frame(height: 140)
 
                     HStack {
-                        let avg = health.weeklyWater.isEmpty ? 0 :
-                            Int(health.weeklyWater.map(\.value).reduce(0, +)) / health.weeklyWater.count
+                        // Exclude today's incomplete data from average
+                        let completed = health.weeklyWater.filter { !$0.isToday }
+                        let avg = completed.isEmpty ? 0 :
+                            Int(completed.map(\.value).reduce(0, +)) / completed.count
                         let met = health.weeklyWater.filter { $0.value >= 8 }.count
                         Text("Avg: \(avg) glasses/day")
                         Spacer()

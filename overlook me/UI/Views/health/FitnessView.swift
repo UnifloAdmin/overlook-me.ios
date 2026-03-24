@@ -323,8 +323,10 @@ struct FitnessView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                let avg = health.weeklySteps.isEmpty ? 0 :
-                    Int(health.weeklySteps.map(\.value).reduce(0, +)) / health.weeklySteps.count
+                // Exclude today's incomplete data from average
+                let completed = health.weeklySteps.filter { !$0.isToday }
+                let avg = completed.isEmpty ? 0 :
+                    Int(completed.map(\.value).reduce(0, +)) / completed.count
                 Text("Avg: \(avg)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -382,10 +384,12 @@ struct FitnessView: View {
                 .frame(height: 160)
                 .animation(.spring(duration: 0.35), value: selectedTrend)
 
-                let values = data.map(\.value)
+                // Exclude today's incomplete data from average
+                let completedData = data.filter { !$0.isToday }
+                let values = completedData.map(\.value)
                 let avg    = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
-                let best   = values.max() ?? 0
-                let trend  = weekTrend(values)
+                let best   = data.map(\.value).max() ?? 0
+                let trend  = weekTrend(data.map(\.value))
 
                 HStack(spacing: 0) {
                     TrendStatCell(label: "Average", value: selectedTrend == .steps ? "\(Int(avg))" : "\(Int(avg)) kcal")
@@ -410,7 +414,11 @@ struct FitnessView: View {
             TrendCompareRow(
                 icon: "figure.walk",
                 label: "Steps avg",
-                value: health.weeklySteps.isEmpty ? "--" : "\(Int(health.weeklySteps.map(\.value).reduce(0,+) / Double(health.weeklySteps.count)))",
+                value: {
+                    let completed = health.weeklySteps.filter { !$0.isToday }
+                    guard !completed.isEmpty else { return "--" }
+                    return "\(Int(completed.map(\.value).reduce(0,+) / Double(completed.count)))"
+                }(),
                 goal: "10,000",
                 color: .orange
             )
@@ -418,7 +426,11 @@ struct FitnessView: View {
             TrendCompareRow(
                 icon: "flame.fill",
                 label: "Calories avg",
-                value: health.weeklyCalories.isEmpty ? "--" : "\(Int(health.weeklyCalories.map(\.value).reduce(0,+) / Double(health.weeklyCalories.count))) kcal",
+                value: {
+                    let completed = health.weeklyCalories.filter { !$0.isToday }
+                    guard !completed.isEmpty else { return "--" }
+                    return "\(Int(completed.map(\.value).reduce(0,+) / Double(completed.count))) kcal"
+                }(),
                 goal: "500 kcal",
                 color: .red
             )

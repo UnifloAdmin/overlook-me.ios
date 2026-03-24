@@ -19,6 +19,14 @@ protocol AuthRepository {
     func disableTwoFactor(accessToken: String, code: String) async throws -> TwoFactorDisableResponse
     func getAuthenticatorDevices(accessToken: String) async throws -> [AuthenticatorDevice]
     func removeAuthenticatorDevice(accessToken: String, deviceId: String) async throws
+    // Passkey
+    func checkPasskeys(email: String) async throws -> Bool
+    func beginPasskeyLogin() async throws -> PasskeyBeginResponse
+    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any]) async throws -> CAMAAuthResponse
+    func beginPasskeyRegistration(accessToken: String) async throws -> PasskeyBeginResponse
+    func completePasskeyRegistration(accessToken: String, challengeId: String, attestationResponse: [String: Any], deviceName: String) async throws
+    func listPasskeys(accessToken: String) async throws -> [PasskeyCredential]
+    func deletePasskey(accessToken: String, id: String) async throws
 }
 
 // MARK: - Real Implementation
@@ -115,6 +123,47 @@ struct RealAuthRepository: AuthRepository {
         try await deleteRequest(url: url, accessToken: accessToken)
     }
 
+    // MARK: - Passkey Methods
+
+    func checkPasskeys(email: String) async throws -> Bool {
+        let encoded = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? email
+        let response: CheckPasskeysResponse = try await getJSON(url: "\(CAMAConfig.passwordlessCheckURL)?email=\(encoded)", accessToken: nil)
+        return response.hasPasskeys
+    }
+
+    func beginPasskeyLogin() async throws -> PasskeyBeginResponse {
+        try await postJSON(url: CAMAConfig.passwordlessBeginURL, body: [:])
+    }
+
+    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any]) async throws -> CAMAAuthResponse {
+        let body: [String: Any] = [
+            "challengeId": challengeId,
+            "assertionResponse": assertionResponse
+        ]
+        return try await postJSON(url: CAMAConfig.passwordlessCompleteURL, body: body)
+    }
+
+    func beginPasskeyRegistration(accessToken: String) async throws -> PasskeyBeginResponse {
+        try await postJSON(url: CAMAConfig.passkeyRegisterBeginURL, body: [:], accessToken: accessToken)
+    }
+
+    func completePasskeyRegistration(accessToken: String, challengeId: String, attestationResponse: [String: Any], deviceName: String) async throws {
+        let body: [String: Any] = [
+            "challengeId": challengeId,
+            "attestationResponse": attestationResponse,
+            "deviceName": deviceName
+        ]
+        let _: [String: String] = try await postJSON(url: CAMAConfig.passkeyRegisterCompleteURL, body: body, accessToken: accessToken)
+    }
+
+    func listPasskeys(accessToken: String) async throws -> [PasskeyCredential] {
+        try await getJSON(url: CAMAConfig.passkeyURL, accessToken: accessToken)
+    }
+
+    func deletePasskey(accessToken: String, id: String) async throws {
+        try await deleteRequest(url: "\(CAMAConfig.passkeyURL)/\(id)", accessToken: accessToken)
+    }
+
     // MARK: - Helpers
 
     private func postEmpty(url: String, accessToken: String) async throws {
@@ -142,11 +191,13 @@ struct RealAuthRepository: AuthRepository {
         }
     }
     
-    private func getJSON<T: Decodable>(url: String, accessToken: String) async throws -> T {
+    private func getJSON<T: Decodable>(url: String, accessToken: String?) async throws -> T {
         let requestURL = URL(string: url)!
         var request = URLRequest(url: requestURL)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
@@ -255,6 +306,58 @@ struct AuthenticatorDevice: Codable, Identifiable {
     let isActive: Bool?
 }
 
+// MARK: - Passkey Models
+
+struct CheckPasskeysResponse: Codable {
+    let hasPasskeys: Bool
+}
+
+/// Covers both authentication-begin and registration-begin responses from the server.
+/// The `options` field is the raw JSON the server returns (FIDO2 CredentialCreateOptions or AssertionOptions).
+struct PasskeyBeginResponse: Codable {
+    let challengeId: String
+    let options: PasskeyOptionsJSON
+}
+
+/// Lightweight wrapper that keeps the FIDO2 options as raw key-value pairs
+/// so we can extract challenge, rpId, user.id, allowCredentials, etc.
+struct PasskeyOptionsJSON: Codable {
+    let challenge: String?        // base64url-encoded
+    let rpId: String?             // e.g. "cama-prod.thankful..."
+    let rp: PasskeyRP?
+    let user: PasskeyUser?
+    let timeout: Int?
+    let allowCredentials: [PasskeyAllowCredential]?
+
+    struct PasskeyRP: Codable {
+        let id: String?
+        let name: String?
+    }
+
+    struct PasskeyUser: Codable {
+        let id: String?            // base64url-encoded
+        let name: String?
+        let displayName: String?
+    }
+
+    struct PasskeyAllowCredential: Codable {
+        let id: String?            // base64url-encoded
+        let type: String?
+    }
+
+    /// Computed rpId — prefers top-level rpId, falls back to rp.id.
+    var resolvedRpId: String {
+        rpId ?? rp?.id ?? ""
+    }
+}
+
+struct PasskeyCredential: Codable, Identifiable {
+    let id: String          // GUID from backend
+    let deviceName: String?
+    let createdAt: String?
+    let lastUsedAt: String?
+}
+
 // MARK: - Auth Errors
 
 enum AuthError: LocalizedError {
@@ -316,4 +419,18 @@ struct StubAuthRepository: AuthRepository {
     func disableTwoFactor(accessToken: String, code: String) async throws -> TwoFactorDisableResponse { TwoFactorDisableResponse(success: true, error: nil) }
     func getAuthenticatorDevices(accessToken: String) async throws -> [AuthenticatorDevice] { [] }
     func removeAuthenticatorDevice(accessToken: String, deviceId: String) async throws {}
+    // Passkey stubs
+    func checkPasskeys(email: String) async throws -> Bool { false }
+    func beginPasskeyLogin() async throws -> PasskeyBeginResponse {
+        PasskeyBeginResponse(challengeId: "stub", options: PasskeyOptionsJSON(challenge: "c3R1Yg", rpId: "localhost", rp: nil, user: nil, timeout: 60000, allowCredentials: nil))
+    }
+    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any]) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", expiresAt: nil, userId: "stub_id", email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
+    }
+    func beginPasskeyRegistration(accessToken: String) async throws -> PasskeyBeginResponse {
+        PasskeyBeginResponse(challengeId: "stub", options: PasskeyOptionsJSON(challenge: "c3R1Yg", rpId: "localhost", rp: nil, user: PasskeyOptionsJSON.PasskeyUser(id: "c3R1Yg", name: "user@example.com", displayName: "Test User"), timeout: 60000, allowCredentials: nil))
+    }
+    func completePasskeyRegistration(accessToken: String, challengeId: String, attestationResponse: [String: Any], deviceName: String) async throws {}
+    func listPasskeys(accessToken: String) async throws -> [PasskeyCredential] { [] }
+    func deletePasskey(accessToken: String, id: String) async throws {}
 }

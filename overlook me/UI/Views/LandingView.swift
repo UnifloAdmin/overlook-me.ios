@@ -13,6 +13,10 @@ private enum AuthScreen: Equatable {
     case landing, login, signup, forgot, twofactor
 }
 
+private enum FormField: Hashable {
+    case firstName, lastName, email, password, confirmPassword
+}
+
 // MARK: - Wave Shape
 
 private struct WaveShape: Shape {
@@ -142,16 +146,177 @@ private struct FloatingIcon: View {
             .font(.system(size: baseSize))
             .foregroundStyle(.white.opacity(opacity))
             .rotationEffect(.degrees(rotation))
-            .offset(y: floating ? -floatRange : floatRange)
-            .onAppear {
-                guard floatSpeed > 0 else { return }
-                withAnimation(
-                    .easeInOut(duration: floatSpeed)
-                    .repeatForever(autoreverses: true)
-                ) {
-                    floating = true
+    }
+}
+
+// MARK: - Slide-to-Login Button
+
+private struct SlideToLoginButton: View {
+    var isDark: Bool
+    var onSlideComplete: () -> Void
+
+    private let trackHeight: CGFloat = 64
+    private let thumbSize: CGFloat = 54
+    private let thumbPadding: CGFloat = 5
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var completed = false
+    @State private var shimmerPhase: CGFloat = -0.3
+    @State private var arrowPulse = false
+    @State private var showCheck = false
+
+    private var thumbColor: Color { Color.kalPrimary }
+    private var trackColor: Color {
+        isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+    }
+    private var trackBorder: Color {
+        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let maxDrag = geo.size.width - thumbSize - thumbPadding * 2
+
+            // Drag progress 0…1
+            let progress = maxDrag > 0 ? dragOffset / maxDrag : 0
+
+            ZStack {
+                // ── Track (pill shape) ──
+                Capsule(style: .continuous)
+                    .fill(trackColor)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(trackBorder, lineWidth: 1)
+                    )
+
+                // ── Animated hint chevrons (>>>) ──
+                HStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(isDark ? .white.opacity(0.18) : .black.opacity(0.14))
+                            .offset(x: arrowPulse ? 4 : -2)
+                            .opacity(arrowPulse ? 0.6 : 0.2)
+                            .animation(
+                                .easeInOut(duration: 1.0)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.15),
+                                value: arrowPulse
+                            )
+                    }
                 }
+                .offset(x: 30)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(completed ? 0 : max(0, 1.0 - progress * 3.0))
+
+                // ── iOS call-screen glimmer label ──
+                Text("Slide to continue")
+                    .font(Font.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isDark ? .white.opacity(0.25) : .black.opacity(0.20))
+                    .overlay(
+                        // Bright glimmer sweep
+                        Text("Slide to continue")
+                            .font(Font.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(isDark ? .white.opacity(0.85) : .black.opacity(0.70))
+                            .mask(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .clear, location: shimmerPhase - 0.12),
+                                        .init(color: .white, location: shimmerPhase - 0.02),
+                                        .init(color: .white, location: shimmerPhase + 0.02),
+                                        .init(color: .clear, location: shimmerPhase + 0.12),
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    )
+                    // Fade out as user drags
+                    .opacity(completed ? 0 : max(0, 1.0 - progress * 2.5))
+                    .offset(x: completed ? 40 : progress * 20.0)
+                    .animation(.easeOut(duration: 0.2), value: progress)
+
+                // ── Filled track behind thumb (pill) ──
+                Capsule(style: .continuous)
+                    .fill(thumbColor.opacity(isDark ? 0.08 : 0.05))
+                    .frame(width: dragOffset + thumbSize + thumbPadding * 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // ── Thumb (pill) ──
+                ZStack {
+                    // Arrow icon
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(isDark ? .black : .white)
+                        .opacity(showCheck ? 0 : 1)
+                        .scaleEffect(showCheck ? 0.3 : 1)
+
+                    // Checkmark on complete
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(isDark ? .black : .white)
+                        .opacity(showCheck ? 1 : 0)
+                        .scaleEffect(showCheck ? 1 : 0.3)
+                }
+                .frame(width: thumbSize, height: thumbSize)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(thumbColor)
+                        .shadow(color: thumbColor.opacity(isDark ? 0.0 : 0.20), radius: 8, y: 3)
+                        .shadow(color: .black.opacity(isDark ? 0.30 : 0.10), radius: 2, y: 1)
+                )
+                .offset(x: -(geo.size.width / 2 - thumbSize / 2 - thumbPadding) + dragOffset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            guard !completed else { return }
+                            let newOffset = min(max(0, value.translation.width), maxDrag)
+                            dragOffset = newOffset
+                            // Light haptic ticks at 25%, 50%, 75%
+                            let pct = newOffset / maxDrag
+                            for threshold in [0.25, 0.5, 0.75] {
+                                let prev = max(0, (newOffset - abs(value.velocity.width) * 0.016)) / maxDrag
+                                if prev < threshold && pct >= threshold {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            }
+                        }
+                        .onEnded { _ in
+                            guard !completed else { return }
+                            if dragOffset > maxDrag * 0.65 {
+                                // ── Complete ──
+                                withAnimation(.spring(duration: 0.35, bounce: 0.12)) {
+                                    dragOffset = maxDrag
+                                    completed = true
+                                }
+                                withAnimation(.spring(duration: 0.3).delay(0.15)) {
+                                    showCheck = true
+                                }
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                    onSlideComplete()
+                                }
+                            } else {
+                                // ── Snap back ──
+                                withAnimation(.spring(duration: 0.5, bounce: 0.25)) {
+                                    dragOffset = 0
+                                }
+                                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                            }
+                        }
+                )
             }
+        }
+        .frame(height: trackHeight)
+        .onAppear {
+            withAnimation(.linear(duration: 2.5).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1.3
+            }
+            // Stagger arrow pulse start
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                arrowPulse = true
+            }
+        }
     }
 }
 
@@ -177,25 +342,32 @@ struct LandingView: View {
     @State private var errorMessage = ""
     @State private var successMessage = ""
     @State private var isLoading = false
+    @State private var landingAppeared = false
+    @State private var screenHeight: CGFloat = 852
+    @State private var showQuickUnlockPrompt = false
+    @FocusState private var focusedField: FormField?
     @FocusState private var otpFocused: Bool
+    @AppStorage("isFaceIdDisabled") private var isFaceIdDisabled = false
+    @AppStorage("hasAskedQuickUnlock") private var hasAskedQuickUnlock = false
 
     private var accent: Color { Color.wellnessGreen }
     private var isDark: Bool { colorScheme == .dark }
+    private var buttonGold: Color { Color(red: 0.95, green: 0.72, blue: 0.22) }
 
     private var waveColor: Color {
-        isDark ? Color(red: 0.14, green: 0.38, blue: 0.26) : Color.wellnessGreen
+        isDark ? Color(red: 0.12, green: 0.12, blue: 0.14) : Color(red: 0.04, green: 0.04, blue: 0.04)
     }
 
     private var pageBg: Color {
-        isDark ? Color(red: 0.07, green: 0.07, blue: 0.08) : .white
+        Color.kalBackground
     }
 
     private var cardBg: Color {
         isDark ? Color.white.opacity(0.06) : .white
     }
 
-    private var cardShadow: Color {
-        isDark ? .clear : .black.opacity(0.04)
+    private var glassTint: Color {
+        isDark ? Color.white.opacity(0.12) : Color.white.opacity(0.45)
     }
 
     private var separatorColor: Color {
@@ -206,8 +378,35 @@ struct LandingView: View {
         isDark ? Color.white.opacity(0.5) : Color.secondary
     }
 
-    private var dividerPipe: Color {
-        isDark ? Color.white.opacity(0.15) : Color.secondary.opacity(0.3)
+    private var glassCardBackground: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(glassTint)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(isDark ? 0.30 : 0.55), lineWidth: 1)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.black.opacity(isDark ? 0.20 : 0.06), lineWidth: 1)
+                    .blur(radius: 1)
+                    .offset(y: 1)
+                    .mask(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.black, .clear],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
+                    )
+            }
+            .shadow(color: .black.opacity(isDark ? 0.20 : 0.07), radius: 14, y: 8)
+            .shadow(color: accent.opacity(isDark ? 0.16 : 0.05), radius: 10, y: 2)
     }
 
     private var waveRatio: CGFloat {
@@ -224,6 +423,8 @@ struct LandingView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            GeometryReader { geo in Color.clear.onAppear { screenHeight = geo.size.height } }
+                .ignoresSafeArea()
             pageBg.ignoresSafeArea()
 
             // Wave header
@@ -244,6 +445,67 @@ struct LandingView: View {
                 default:         formContent
                 }
             }
+
+            // Top nav pills (landing only)
+            if screen == .landing {
+                VStack(alignment: .trailing, spacing: 6) {
+                    // Row 1: Integrations
+                    HStack(spacing: 8) {
+                        Spacer()
+                        landingNavPill("HealthKit", icon: "heart.fill", tint: nil)
+                        landingNavPill("Plaid", icon: "building.columns.fill", tint: nil)
+                    }
+                    // Row 2: Info
+                    HStack(spacing: 8) {
+                        Spacer()
+                        landingNavPill("Features", icon: "square.grid.2x2.fill", tint: nil)
+                        landingNavPill("Pricing", icon: "tag.fill", tint: nil)
+                        landingNavPill("Early Access", icon: "sparkles", tint: nil)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .opacity(landingAppeared ? 1 : 0)
+                .offset(y: landingAppeared ? 0 : -10)
+            }
+        }
+        .confirmationDialog("Use Face ID for quick login?", isPresented: $showQuickUnlockPrompt, titleVisibility: .visible) {
+            Button("Enable Face ID") {
+                isFaceIdDisabled = false
+                hasAskedQuickUnlock = true
+            }
+            Button("Not now", role: .cancel) {
+                hasAskedQuickUnlock = true
+            }
+        } message: {
+            Text("Next time you can unlock and continue faster with Face ID.")
+        }
+    }
+
+    // MARK: - Landing Nav Pill
+
+    private func landingNavPill(_ title: String, icon: String, tint: Color?) -> some View {
+        Button {
+            // TODO: Navigate to the appropriate screen
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.85))
+                Text(title)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.90))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.15))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+            )
         }
     }
 
@@ -255,39 +517,78 @@ struct LandingView: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Welcome")
-                    .font(.system(size: 34, weight: .bold))
+            // ── Hero section ──
+            VStack(alignment: .leading, spacing: 20) {
+                // App name
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Overlook Me")
+                        .font(.system(size: 38, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.kalPrimary)
+                    Text("Your life, one dashboard.")
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.kalMuted)
+                }
+                .opacity(landingAppeared ? 1 : 0)
+                .offset(y: landingAppeared ? 0 : 24)
 
-                Text("Track your wellness journey.\nStay mindful, stay in control.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(4)
+                // Integration badges
+                HStack(spacing: 8) {
+                    integrationBadge("HealthKit", icon: "heart.fill", color: .pink)
+                    integrationBadge("Plaid", icon: "building.columns.fill", color: Color.kalDone)
+                    integrationBadge("AI Insights", icon: "brain.head.profile", color: Color.kalToday)
+                }
+                .opacity(landingAppeared ? 1 : 0)
+                .offset(y: landingAppeared ? 0 : 18)
+
+                // Tagline
+                Text("Track wellness · Manage finances · Build habits")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.kalTertiary)
+                    .opacity(landingAppeared ? 1 : 0)
+                    .offset(y: landingAppeared ? 0 : 14)
             }
             .padding(.horizontal, 28)
-            .padding(.bottom, 40)
+            .padding(.bottom, 36)
 
-            // Continue row
-            HStack {
-                Spacer()
-                Button {
-                    navigateTo(.login)
-                } label: {
-                    HStack(spacing: 10) {
-                        Text("Continue")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
-
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(accent)
-                    }
-                }
+            // ── Slide button ──
+            SlideToLoginButton(isDark: isDark) {
+                _Concurrency.Task { await attemptPasskeyThenLogin() }
             }
+            .opacity(landingAppeared ? 1 : 0)
+            .offset(y: landingAppeared ? 0 : 12)
             .padding(.horizontal, 28)
             .padding(.bottom, 44)
         }
+        .onAppear {
+            withAnimation(.spring(duration: 0.75, bounce: 0.12).delay(0.25)) {
+                landingAppeared = true
+            }
+        }
+        .onDisappear { landingAppeared = false }
         .transition(.opacity)
+    }
+
+    // MARK: - Integration Badge
+
+    private func integrationBadge(_ title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.kalPrimary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.kalInput)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.kalBorder, lineWidth: 0.5)
+        )
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -320,16 +621,16 @@ struct LandingView: View {
 
                     // Title
                     Text(formTitle)
-                        .font(.system(size: 30, weight: .bold))
+                        .font(.system(size: 26, weight: .bold))
                         .padding(.horizontal, 28)
-                        .padding(.bottom, 28)
+                        .padding(.bottom, 20)
 
                     // Alerts
                     alertBanners
                         .padding(.horizontal, 28)
 
                     // Form card
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 16) {
                         formFields
 
                         if screen == .login {
@@ -338,19 +639,20 @@ struct LandingView: View {
 
                         submitButton
                             .padding(.top, 6)
+
+                        if screen == .login {
+                            passkeyDivider
+                            passkeyLoginButton
+                        }
                     }
-                    .padding(24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(cardBg)
-                            .shadow(color: cardShadow, radius: 16, y: 8)
-                    )
-                    .padding(.horizontal, 20)
+                    .padding(18)
+                    .background(glassCardBackground)
+                    .padding(.horizontal, 22)
 
                     // Switch link
                     formLink
-                        .padding(.top, 24)
-                        .padding(.bottom, 40)
+                        .padding(.top, 18)
+                        .padding(.bottom, 28)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -364,10 +666,10 @@ struct LandingView: View {
     private var waveSpacerHeight: CGFloat {
         switch screen {
         case .landing:   0
-        case .login:     UIScreen.main.bounds.height * 0.20
-        case .signup:    UIScreen.main.bounds.height * 0.12
-        case .forgot:    UIScreen.main.bounds.height * 0.20
-        case .twofactor: UIScreen.main.bounds.height * 0.20
+        case .login:     screenHeight * 0.20
+        case .signup:    screenHeight * 0.12
+        case .forgot:    screenHeight * 0.20
+        case .twofactor: screenHeight * 0.20
         }
     }
 
@@ -392,18 +694,34 @@ struct LandingView: View {
             EmptyView()
 
         case .login:
-            underlineField("Email", text: $email, icon: "envelope", keyboard: .emailAddress, content: .emailAddress)
-            underlineSecureField("Password", text: $password, isVisible: $showPassword, icon: "lock")
+            underlineField("Email", text: $email, icon: "envelope", focus: .email, keyboard: .emailAddress, content: .emailAddress, submitLabel: .next) {
+                focusedField = .password
+            }
+            underlineSecureField("Password", text: $password, isVisible: $showPassword, icon: "lock", focus: .password, content: .password, submitLabel: .go) {
+                _Concurrency.Task { await performSubmit() }
+            }
 
         case .signup:
-            underlineField("First Name", text: $firstName, icon: "person", capitalize: true, content: .givenName)
-            underlineField("Last Name", text: $lastName, icon: "person", capitalize: true, content: .familyName)
-            underlineField("Email", text: $email, icon: "envelope", keyboard: .emailAddress, content: .emailAddress)
-            underlineSecureField("Password", text: $password, isVisible: $showPassword, icon: "lock", content: .newPassword)
-            underlineSecureField("Confirm Password", text: $confirmPassword, isVisible: $showConfirmPassword, icon: "lock.rotation", content: .newPassword)
+            underlineField("First Name", text: $firstName, icon: "person", focus: .firstName, capitalize: true, content: .givenName, submitLabel: .next) {
+                focusedField = .lastName
+            }
+            underlineField("Last Name", text: $lastName, icon: "person", focus: .lastName, capitalize: true, content: .familyName, submitLabel: .next) {
+                focusedField = .email
+            }
+            underlineField("Email", text: $email, icon: "envelope", focus: .email, keyboard: .emailAddress, content: .emailAddress, submitLabel: .next) {
+                focusedField = .password
+            }
+            underlineSecureField("Password", text: $password, isVisible: $showPassword, icon: "lock", focus: .password, content: .newPassword, submitLabel: .next) {
+                focusedField = .confirmPassword
+            }
+            underlineSecureField("Confirm Password", text: $confirmPassword, isVisible: $showConfirmPassword, icon: "lock.rotation", focus: .confirmPassword, content: .newPassword, submitLabel: .go) {
+                _Concurrency.Task { await performSubmit() }
+            }
 
         case .forgot:
-            underlineField("Email", text: $email, icon: "envelope", keyboard: .emailAddress, content: .emailAddress)
+            underlineField("Email", text: $email, icon: "envelope", focus: .email, keyboard: .emailAddress, content: .emailAddress, submitLabel: .go) {
+                _Concurrency.Task { await performSubmit() }
+            }
 
         case .twofactor:
             otpBoxes
@@ -543,18 +861,28 @@ struct LandingView: View {
 
     private var submitButton: some View {
         Button {
+            focusedField = nil
+            otpFocused = false
             _Concurrency.Task { await performSubmit() }
         } label: {
             ZStack {
                 Text(submitTitle)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .opacity(isLoading ? 0 : 1)
                 if isLoading { ProgressView().tint(.white) }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(height: 42)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(buttonGold)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(isDark ? 0.18 : 0.38), lineWidth: 1)
+            )
+            .shadow(color: buttonGold.opacity(isDark ? 0.32 : 0.24), radius: 8, y: 3)
         }
         .disabled(isLoading)
         .scaleEffect(isLoading ? 0.98 : 1)
@@ -569,6 +897,49 @@ struct LandingView: View {
         case .forgot:    "Send Reset Link"
         case .twofactor: "Verify"
         }
+    }
+
+    // MARK: - Passkey Login
+
+    private var passkeyDivider: some View {
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(separatorColor)
+                .frame(height: 1)
+            Text("OR")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+            Rectangle()
+                .fill(separatorColor)
+                .frame(height: 1)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var passkeyLoginButton: some View {
+        Button {
+            focusedField = nil
+            _Concurrency.Task { await submitPasskeyLogin() }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "person.badge.key.fill")
+                    .font(.body)
+                Text("Sign in with Passkey")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.thinMaterial)
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(separatorColor, lineWidth: 1)
+                    }
+            )
+        }
+        .disabled(isLoading)
     }
 
     // MARK: - Form Link
@@ -608,25 +979,26 @@ struct LandingView: View {
         _ label: String,
         text: Binding<String>,
         icon: String,
+        focus: FormField,
         keyboard: UIKeyboardType = .default,
         capitalize: Bool = false,
-        content: UITextContentType? = nil
+        content: UITextContentType? = nil,
+        submitLabel: SubmitLabel = .next,
+        onSubmit: (() -> Void)? = nil
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let isFocused = focusedField == focus
+        return VStack(alignment: .leading, spacing: 10) {
             Text(label)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(isFocused ? accent : .primary)
+                .animation(.easeInOut(duration: 0.15), value: isFocused)
 
-            HStack(spacing: 0) {
+            HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.subheadline)
-                    .foregroundStyle(fieldIconColor)
-                    .frame(width: 24)
-
-                Text("|")
                     .font(.callout)
-                    .foregroundStyle(dividerPipe)
-                    .padding(.horizontal, 8)
+                    .foregroundStyle(isFocused ? accent : fieldIconColor)
+                    .frame(width: 18)
+                    .animation(.easeInOut(duration: 0.15), value: isFocused)
 
                 TextField(label.lowercased(), text: text)
                     .font(.body)
@@ -634,11 +1006,22 @@ struct LandingView: View {
                     .textContentType(content)
                     .textInputAutocapitalization(capitalize ? .words : .never)
                     .autocorrectionDisabled()
+                    .focused($focusedField, equals: focus)
+                    .submitLabel(submitLabel)
+                    .onSubmit { onSubmit?() }
             }
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.thinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(isFocused ? accent.opacity(0.75) : separatorColor, lineWidth: isFocused ? 1.4 : 1)
+                    }
+            )
+            .shadow(color: .black.opacity(isDark ? 0.10 : 0.04), radius: 4, y: 2)
 
-            Rectangle()
-                .fill(separatorColor)
-                .frame(height: 1)
         }
     }
 
@@ -647,23 +1030,24 @@ struct LandingView: View {
         text: Binding<String>,
         isVisible: Binding<Bool>,
         icon: String,
-        content: UITextContentType = .password
+        focus: FormField,
+        content: UITextContentType = .password,
+        submitLabel: SubmitLabel = .next,
+        onSubmit: (() -> Void)? = nil
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let isFocused = focusedField == focus
+        return VStack(alignment: .leading, spacing: 10) {
             Text(label)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(isFocused ? accent : .primary)
+                .animation(.easeInOut(duration: 0.15), value: isFocused)
 
-            HStack(spacing: 0) {
+            HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.subheadline)
-                    .foregroundStyle(fieldIconColor)
-                    .frame(width: 24)
-
-                Text("|")
                     .font(.callout)
-                    .foregroundStyle(dividerPipe)
-                    .padding(.horizontal, 8)
+                    .foregroundStyle(isFocused ? accent : fieldIconColor)
+                    .frame(width: 18)
+                    .animation(.easeInOut(duration: 0.15), value: isFocused)
 
                 Group {
                     if isVisible.wrappedValue {
@@ -676,31 +1060,56 @@ struct LandingView: View {
                 .textContentType(content)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($focusedField, equals: focus)
+                .submitLabel(submitLabel)
+                .onSubmit { onSubmit?() }
 
-                Button { isVisible.wrappedValue.toggle() } label: {
+                Button {
+                    let wasFocused = focusedField == focus
+                    isVisible.wrappedValue.toggle()
+                    if wasFocused {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            focusedField = focus
+                        }
+                    }
+                } label: {
                     Image(systemName: isVisible.wrappedValue ? "eye.slash" : "eye")
                         .font(.subheadline)
-                        .foregroundStyle(fieldIconColor)
+                        .foregroundStyle(isFocused ? accent : fieldIconColor)
                 }
                 .buttonStyle(.plain)
             }
-
-            Rectangle()
-                .fill(separatorColor)
-                .frame(height: 1)
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.thinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(isFocused ? accent.opacity(0.75) : separatorColor, lineWidth: isFocused ? 1.4 : 1)
+                    }
+            )
+            .shadow(color: .black.opacity(isDark ? 0.10 : 0.04), radius: 4, y: 2)
         }
     }
 
     // MARK: - Navigation
 
     private func navigateTo(_ target: AuthScreen) {
+        focusedField = nil
+        otpFocused = false
         withAnimation(.spring(duration: 0.5, bounce: 0.15)) {
             screen = target
             errorMessage = ""
             successMessage = ""
         }
-        if target == .twofactor {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { otpFocused = true }
+        let delay: Double = 0.55
+        switch target {
+        case .login:     DispatchQueue.main.asyncAfter(deadline: .now() + delay) { focusedField = .email }
+        case .signup:    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { focusedField = .firstName }
+        case .forgot:    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { focusedField = .email }
+        case .twofactor: DispatchQueue.main.asyncAfter(deadline: .now() + 0.6)  { otpFocused = true }
+        case .landing:   break
         }
     }
 
@@ -731,6 +1140,33 @@ struct LandingView: View {
             navigateTo(.twofactor)
         } else if !result.success {
             showError(result.error ?? "Login failed")
+        } else {
+            promptForQuickUnlockIfNeeded()
+        }
+        isLoading = false
+    }
+
+    private func attemptPasskeyThenLogin() async {
+        // Try passkey login automatically; fall through to password form on failure
+        isLoading = true
+        let result = await interactor.loginWithPasskey()
+        isLoading = false
+
+        if result.success {
+            promptForQuickUnlockIfNeeded()
+        } else {
+            // Passkey failed or cancelled — fall through to password login form
+            navigateTo(.login)
+        }
+    }
+
+    private func submitPasskeyLogin() async {
+        isLoading = true; errorMessage = ""
+        let result = await interactor.loginWithPasskey()
+        if result.success {
+            promptForQuickUnlockIfNeeded()
+        } else if let error = result.error, error != "Passkey sign-in was cancelled." {
+            showError(error)
         }
         isLoading = false
     }
@@ -746,6 +1182,7 @@ struct LandingView: View {
         isLoading = true; errorMessage = ""
         let result = await interactor.signUp(email: email, password: password, confirmPassword: confirmPassword, firstName: firstName, lastName: lastName)
         if !result.success { showError(result.error ?? "Sign up failed") }
+        else { promptForQuickUnlockIfNeeded() }
         isLoading = false
     }
 
@@ -772,7 +1209,13 @@ struct LandingView: View {
         isLoading = true; errorMessage = ""
         let result = await interactor.verifyTwoFactor(userId: twoFactorUserId, code: twoFactorCode)
         if !result.success { showError(result.error ?? "Invalid code") }
+        else { promptForQuickUnlockIfNeeded() }
         isLoading = false
+    }
+
+    private func promptForQuickUnlockIfNeeded() {
+        guard !hasAskedQuickUnlock else { return }
+        showQuickUnlockPrompt = true
     }
 }
 

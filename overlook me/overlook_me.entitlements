@@ -10,5 +10,9 @@
 	<true/>
 	<key>com.apple.developer.weatherkit</key>
 	<true/>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:cama-prod.thankfulcoast-60df155d.eastus.azurecontainerapps.io</string>
+	</array>
 </dict>
 </plist>

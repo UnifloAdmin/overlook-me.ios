@@ -5,6 +5,10 @@ struct HomeView: View {
     @EnvironmentObject private var tabBar: TabBarStyleStore
     @State private var transactionsViewModel = TransactionsViewModel()
 
+    private var isNavBarVisible: Bool {
+        tabBar.config == .dailyHabits || tabBar.config == .tasks
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             rootView
@@ -12,7 +16,7 @@ struct HomeView: View {
                     destination(for: route)
                 }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(isNavBarVisible ? .visible : .hidden, for: .navigationBar)
     }
 
     @ViewBuilder
@@ -20,17 +24,14 @@ struct HomeView: View {
         if tabBar.config == .dailyHabits {
             DailyHabitsView()
                 .tabBarConfig(.dailyHabits)
-                .toolbar(.visible, for: .navigationBar)
                 .id("dailyHabits")
         } else if tabBar.config == .tasks {
             TaskDashboard()
                 .tabBarConfig(.tasks)
-                .toolbar(.visible, for: .navigationBar)
                 .id("tasks")
         } else {
             landingView
                 .tabBarConfig(.default)
-                .toolbar(.hidden, for: .navigationBar)
                 .id("landing")
         }
     }
@@ -62,6 +63,9 @@ struct HomeView: View {
         case .transactions:
             TransactionsView(viewModel: transactionsViewModel, tab: .analytics)
                 .toolbar(.visible, for: .navigationBar)
+        case .spending:
+            SpendingView()
+                .toolbar(.visible, for: .navigationBar)
         case .budgets:
             BudgetsView()
                 .toolbar(.visible, for: .navigationBar)
@@ -77,8 +81,17 @@ struct HomeView: View {
                 .toolbar(.visible, for: .navigationBar)
         case .tasks, .dailyHabits:
             EmptyView()
+        case .waterTracker:
+            WaterTrackerView()
+                .toolbar(.visible, for: .navigationBar)
+        case .reminders:
+            RemindersView()
+                .toolbar(.visible, for: .navigationBar)
 
         case .healthDashboard, .healthInsights:
+            HealthInsightsView()
+                .toolbar(.visible, for: .navigationBar)
+        case .healthSleep, .healthHeart, .healthMobility, .healthRespiration, .healthFitness, .healthExercise:
             HealthInsightsView()
                 .toolbar(.visible, for: .navigationBar)
         case .fitness:

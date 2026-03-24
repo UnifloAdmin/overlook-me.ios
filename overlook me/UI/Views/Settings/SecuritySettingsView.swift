@@ -48,6 +48,10 @@ struct SecuritySettingsView: View {
     @State private var tfaStatus: TwoFactorStatusInfo?
     @State private var devices: [AuthenticatorDevice] = []
 
+    // Passkeys
+    @State private var passkeys: [PasskeyCredential] = []
+    @State private var isRegisteringPasskey = false
+
     // 2FA setup (single unified flow)
     @State private var isSettingUp = false
     @State private var sharedKey = ""
@@ -82,6 +86,7 @@ struct SecuritySettingsView: View {
                     disableSection
                 } else {
                     emailSection
+                    passkeySection
                     twoFactorSection
                     if tfaStatus?.enabled == true { devicesSection }
                 }
@@ -109,6 +114,7 @@ struct SecuritySettingsView: View {
         emailVerified = await emailCheck
         tfaStatus = await tfaCheck
         devices = await devicesCheck
+        passkeys = await interactor.listPasskeys()
     }
 
     // MARK: - Error Banner
@@ -160,6 +166,73 @@ struct SecuritySettingsView: View {
         let result = await interactor.resendVerificationEmail()
         if !result.success { withAnimation { errorMessage = result.error ?? "Failed to send" } }
         resendingEmail = false
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - Passkeys Section
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    private var passkeySection: some View {
+        card {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Label("Passkeys", systemImage: "person.badge.key.fill").font(.headline)
+                    Spacer()
+                    pill(!passkeys.isEmpty)
+                }
+
+                Text("Sign in faster with biometrics instead of a password.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                if passkeys.isEmpty {
+                    Text("No passkeys registered yet.")
+                        .font(.subheadline).foregroundStyle(.tertiary)
+                } else {
+                    ForEach(passkeys) { pk in
+                        passkeyRow(pk)
+                        if pk.id != passkeys.last?.id { Divider() }
+                    }
+                }
+
+                primaryButton(isRegisteringPasskey ? "Registering..." : "Register New Passkey", loading: isRegisteringPasskey) {
+                    _Concurrency.Task { await registerNewPasskey() }
+                }
+            }
+        }
+    }
+
+    private func passkeyRow(_ pk: PasskeyCredential) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "key.fill").font(.title3).foregroundStyle(accent).frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pk.deviceName ?? "Passkey").font(.subheadline.weight(.medium))
+                if let date = pk.createdAt { Text(formatDate(date)).font(.caption).foregroundStyle(.tertiary) }
+            }
+            Spacer()
+            Button { _Concurrency.Task { await removePasskey(pk.id) } } label: {
+                Image(systemName: "trash").font(.subheadline).foregroundStyle(.red.opacity(0.7))
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private func registerNewPasskey() async {
+        isRegisteringPasskey = true; errorMessage = ""
+        let result = await interactor.registerPasskey()
+        if result.success {
+            passkeys = await interactor.listPasskeys()
+        } else if let err = result.error, err != "Passkey registration was cancelled." {
+            withAnimation { errorMessage = err }
+        }
+        isRegisteringPasskey = false
+    }
+
+    private func removePasskey(_ id: String) async {
+        let result = await interactor.deletePasskey(id: id)
+        if result.success {
+            withAnimation { passkeys.removeAll { $0.id == id } }
+        } else {
+            withAnimation { errorMessage = result.error ?? "Failed to remove passkey" }
+        }
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

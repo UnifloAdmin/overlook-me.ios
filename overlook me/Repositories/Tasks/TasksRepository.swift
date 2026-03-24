@@ -42,7 +42,8 @@ protocol TasksRepository {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [SubtaskDTO]?
     ) async throws -> AutoSaveTaskResponseDTO
     
     func updateTask(
@@ -66,10 +67,26 @@ protocol TasksRepository {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [SubtaskDTO]?
     ) async throws -> AutoSaveTaskResponseDTO
     
     func deleteTask(taskId: String, userId: String) async throws
+    
+    func createSubTask(
+        taskId: String,
+        userId: String,
+        title: String,
+        description: String?,
+        status: SubTaskStatus,
+        priority: SubTaskPriority,
+        estimatedDurationMinutes: Int?,
+        dueDateTime: Date?,
+        assignedTo: String?,
+        notes: String?
+    ) async throws -> SubTaskResponseDTO
+    
+    func fetchSubTasksForTask(taskId: String) async throws -> [SubTaskDTO]
 }
 
 // MARK: - Real Implementation
@@ -144,7 +161,8 @@ struct RealTasksRepository: TasksRepository {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [SubtaskDTO]? = nil
     ) async throws -> AutoSaveTaskResponseDTO {
         print("📡 [TasksRepository] Creating task:")
         print("   title: \(title)")
@@ -175,7 +193,8 @@ struct RealTasksRepository: TasksRepository {
             longitude: longitude,
             isProModeEnabled: isProModeEnabled,
             isFuture: isFuture,
-            lastKnownUpdatedAt: nil
+            lastKnownUpdatedAt: nil,
+            subtasks: subtasks
         )
         
         return try await api.autoSaveTask(request)
@@ -202,7 +221,8 @@ struct RealTasksRepository: TasksRepository {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [SubtaskDTO]? = nil
     ) async throws -> AutoSaveTaskResponseDTO {
         let request = AutoSaveTaskRequestDTO(
             taskId: taskId,
@@ -226,7 +246,8 @@ struct RealTasksRepository: TasksRepository {
             longitude: longitude,
             isProModeEnabled: isProModeEnabled,
             isFuture: isFuture,
-            lastKnownUpdatedAt: nil
+            lastKnownUpdatedAt: nil,
+            subtasks: subtasks
         )
         
         return try await api.updateTask(taskId: taskId, request: request)
@@ -234,6 +255,61 @@ struct RealTasksRepository: TasksRepository {
     
     func deleteTask(taskId: String, userId: String) async throws {
         _ = try await api.deleteTask(taskId: taskId, userId: userId)
+    }
+    
+    func createSubTask(
+        taskId: String,
+        userId: String,
+        title: String,
+        description: String?,
+        status: SubTaskStatus,
+        priority: SubTaskPriority,
+        estimatedDurationMinutes: Int?,
+        dueDateTime: Date?,
+        assignedTo: String?,
+        notes: String?
+    ) async throws -> SubTaskResponseDTO {
+        print("📡 [TasksRepository] Creating subtask:")
+        print("   taskId: \(taskId)")
+        print("   userId: \(userId)")
+        print("   title: \(title)")
+        print("   status: \(status.rawValue)")
+        print("   priority: \(priority.rawValue)")
+        print("   dueDateTime: \(dueDateTime?.description ?? "nil")")
+        
+        let request = CreateSubTaskRequestDTO(
+            taskId: taskId,
+            userId: userId,
+            title: title,
+            description: description,
+            status: status,
+            priority: priority,
+            estimatedDurationMinutes: estimatedDurationMinutes,
+            dueDateTime: dueDateTime.map { dateFormatter.string(from: $0) },
+            assignedTo: assignedTo,
+            notes: notes
+        )
+        let subTasksApi = SubTasksAPI(client: api.client)
+        do {
+            let response = try await subTasksApi.createSubTask(request)
+            print("✅ [TasksRepository] Subtask created successfully: \(response.subTask.id)")
+            return response
+        } catch {
+            print("❌ [TasksRepository] Failed to create subtask: \(error)")
+            if case APIError.httpStatus(let code, let body) = error {
+                if let body = body, let bodyStr = String(data: body, encoding: .utf8) {
+                    print("❌ [TasksRepository] HTTP \(code) response body: \(bodyStr)")
+                }
+            }
+            throw error
+        }
+    }
+    
+    func fetchSubTasksForTask(taskId: String) async throws -> [SubTaskDTO] {
+        let subTasksApi = SubTasksAPI(client: api.client)
+        let result = try await subTasksApi.getSubTasksForTask(taskId: taskId)
+        print("📡 [TasksRepository] Fetched \(result.count) subtasks for task \(taskId)")
+        return result
     }
     
     private static var defaultDateFormatter: ISO8601DateFormatter {
@@ -282,7 +358,8 @@ struct StubTasksRepository: TasksRepository {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [SubtaskDTO]? = nil
     ) async throws -> AutoSaveTaskResponseDTO {
         AutoSaveTaskResponseDTO(
             id: UUID().uuidString,
@@ -306,7 +383,8 @@ struct StubTasksRepository: TasksRepository {
             updatedAt: ISO8601DateFormatter().string(from: Date()),
             isNewTask: true,
             conflictDetected: false,
-            conflictMessage: nil
+            conflictMessage: nil,
+            subtasks: subtasks
         )
     }
     
@@ -331,7 +409,8 @@ struct StubTasksRepository: TasksRepository {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [SubtaskDTO]? = nil
     ) async throws -> AutoSaveTaskResponseDTO {
         AutoSaveTaskResponseDTO(
             id: taskId,
@@ -355,11 +434,48 @@ struct StubTasksRepository: TasksRepository {
             updatedAt: ISO8601DateFormatter().string(from: Date()),
             isNewTask: false,
             conflictDetected: false,
-            conflictMessage: nil
+            conflictMessage: nil,
+            subtasks: subtasks
         )
     }
     
     func deleteTask(taskId: String, userId: String) async throws {
         // No-op for stub
+    }
+    
+    func createSubTask(
+        taskId: String,
+        userId: String,
+        title: String,
+        description: String?,
+        status: SubTaskStatus,
+        priority: SubTaskPriority,
+        estimatedDurationMinutes: Int?,
+        dueDateTime: Date?,
+        assignedTo: String?,
+        notes: String?
+    ) async throws -> SubTaskResponseDTO {
+        SubTaskResponseDTO(
+            message: "Success",
+            subTask: SubTaskDTO(
+                id: UUID().uuidString,
+                taskId: taskId,
+                userId: userId,
+                title: title,
+                description: description,
+                status: status,
+                sortOrder: 0,
+                isCompleted: false,
+                priority: priority,
+                progressPercentage: 0,
+                dueDateTime: dueDateTime.map { ISO8601DateFormatter().string(from: $0) },
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                updatedAt: ISO8601DateFormatter().string(from: Date())
+            )
+        )
+    }
+    
+    func fetchSubTasksForTask(taskId: String) async throws -> [SubTaskDTO] {
+        return []
     }
 }

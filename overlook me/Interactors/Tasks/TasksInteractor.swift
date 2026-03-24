@@ -38,7 +38,8 @@ protocol TasksInteractor {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [Subtask]?
     ) async
     
     func updateTask(
@@ -61,10 +62,24 @@ protocol TasksInteractor {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [Subtask]?
     ) async
     
     func deleteTask(taskId: String) async
+    
+    func createSubTask(
+        taskId: String,
+        title: String,
+        description: String?,
+        status: SubTaskStatus,
+        priority: SubTaskPriority,
+        estimatedDurationMinutes: Int?,
+        dueDateTime: Date?,
+        assignedTo: String?,
+        notes: String?
+    ) async
+    
     func clearError()
 }
 
@@ -142,12 +157,37 @@ struct RealTasksInteractor: TasksInteractor {
                     print("     - priority: \(dto.priority?.rawValue ?? "nil")")
                     print("     - dueDateTime: \(dto.dueDateTime ?? "nil")")
                     print("     - scheduledDate: \(dto.scheduledDate ?? "nil")")
-                    print("     - category: \(dto.category ?? "nil")")
-                    print("     - project: \(dto.project ?? "nil")")
+                    print("     - subtasks: \(dto.subtasks?.count ?? 0) items")
+                    if let subs = dto.subtasks, !subs.isEmpty {
+                        for (si, sub) in subs.enumerated() {
+                            print("       [\(si)] text=\(sub.text), completed=\(sub.completed), order=\(sub.order)")
+                        }
+                    }
                 }
             }
             
-            let tasks = taskDTOs.map { Task(from: $0) }
+            var tasks = taskDTOs.map { Task(from: $0) }
+            
+            // Fetch subtasks separately for each task (the tasks endpoint doesn't reliably include them)
+            print("🔄 [TasksInteractor] Fetching subtasks for \(tasks.count) tasks...")
+            for i in tasks.indices {
+                do {
+                    let subTaskDTOs = try await repository.fetchSubTasksForTask(taskId: tasks[i].id)
+                    if !subTaskDTOs.isEmpty {
+                        tasks[i].subtasks = subTaskDTOs.map { dto in
+                            Subtask(
+                                text: dto.title,
+                                completed: dto.isCompleted ?? false,
+                                order: dto.sortOrder ?? 0
+                            )
+                        }.sorted { $0.order < $1.order }
+                        print("✅ [TasksInteractor] Task '\(tasks[i].title)' loaded \(tasks[i].subtasks.count) subtasks")
+                    }
+                } catch {
+                    print("⚠️ [TasksInteractor] Failed to fetch subtasks for task '\(tasks[i].title)': \(error)")
+                }
+            }
+            
             appState.state.tasks.tasks = tasks
             appState.state.tasks.isLoading = false
             
@@ -183,7 +223,8 @@ struct RealTasksInteractor: TasksInteractor {
         latitude: Double? = nil,
         longitude: Double? = nil,
         isProModeEnabled: Bool? = nil,
-        isFuture: Bool? = nil
+        isFuture: Bool? = nil,
+        subtasks: [Subtask]? = nil
     ) async {
         appState.state.tasks.isSaving = true
         appState.state.tasks.error = nil
@@ -214,7 +255,8 @@ struct RealTasksInteractor: TasksInteractor {
                 latitude: latitude,
                 longitude: longitude,
                 isProModeEnabled: isProModeEnabled,
-                isFuture: isFuture
+                isFuture: isFuture,
+                subtasks: subtasks?.map { SubtaskDTO(text: $0.text, completed: $0.completed, order: $0.order) }
             )
             
             let newTask = Task(from: responseDTO)
@@ -247,7 +289,8 @@ struct RealTasksInteractor: TasksInteractor {
         latitude: Double? = nil,
         longitude: Double? = nil,
         isProModeEnabled: Bool? = nil,
-        isFuture: Bool? = nil
+        isFuture: Bool? = nil,
+        subtasks: [Subtask]? = nil
     ) async {
         appState.state.tasks.isSaving = true
         appState.state.tasks.error = nil
@@ -280,7 +323,8 @@ struct RealTasksInteractor: TasksInteractor {
                 latitude: latitude,
                 longitude: longitude,
                 isProModeEnabled: isProModeEnabled,
-                isFuture: isFuture
+                isFuture: isFuture,
+                subtasks: subtasks?.map { SubtaskDTO(text: $0.text, completed: $0.completed, order: $0.order) }
             )
             
             let updatedTask = Task(from: responseDTO)
@@ -307,6 +351,69 @@ struct RealTasksInteractor: TasksInteractor {
             appState.state.tasks.tasks.removeAll { $0.id == taskId }
         } catch {
             appState.state.tasks.error = error
+        }
+    }
+    
+    func createSubTask(
+        taskId: String,
+        title: String,
+        description: String?,
+        status: SubTaskStatus,
+        priority: SubTaskPriority,
+        estimatedDurationMinutes: Int?,
+        dueDateTime: Date?,
+        assignedTo: String?,
+        notes: String?
+    ) async {
+        appState.state.tasks.isSaving = true
+        appState.state.tasks.error = nil
+        
+        guard let authUser = appState.state.auth.user else {
+            print("❌ [TasksInteractor] createSubTask: No authenticated user found")
+            appState.state.tasks.error = TasksError.missingUser
+            appState.state.tasks.isSaving = false
+            return
+        }
+        
+        print("🔄 [TasksInteractor] Creating subtask for task \(taskId) by user \(authUser.id)")
+        
+        do {
+            let response = try await repository.createSubTask(
+                taskId: taskId,
+                userId: authUser.id,
+                title: title,
+                description: description,
+                status: status,
+                priority: priority,
+                estimatedDurationMinutes: estimatedDurationMinutes,
+                dueDateTime: dueDateTime,
+                assignedTo: assignedTo,
+                notes: notes
+            )
+            
+            print("✅ [TasksInteractor] Subtask created: id=\(response.subTask.id), title=\(response.subTask.title)")
+            
+            // On success, append the new subtask to our locally cached parent Task so it doesn't vanish on navigate back
+            let newSubtask = Subtask(
+                text: response.subTask.title,
+                completed: response.subTask.isCompleted ?? false,
+                order: response.subTask.sortOrder ?? 0
+            )
+            
+            if let index = appState.state.tasks.tasks.firstIndex(where: { $0.id == taskId }) {
+                appState.state.tasks.tasks[index].subtasks.append(newSubtask)
+                print("✅ [TasksInteractor] Subtask appended to local task at index \(index)")
+            } else {
+                print("⚠️ [TasksInteractor] Could not find parent task \(taskId) in local state to append subtask")
+            }
+            
+            appState.state.tasks.isSaving = false
+        } catch {
+            print("❌ [TasksInteractor] createSubTask failed: \(error)")
+            print("❌ [TasksInteractor] Error type: \(type(of: error))")
+            print("❌ [TasksInteractor] Error description: \(error.localizedDescription)")
+            appState.state.tasks.error = error
+            appState.state.tasks.isSaving = false
         }
     }
     
@@ -348,7 +455,8 @@ struct StubTasksInteractor: TasksInteractor {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [Subtask]?
     ) async {}
     
     func updateTask(
@@ -371,9 +479,23 @@ struct StubTasksInteractor: TasksInteractor {
         latitude: Double?,
         longitude: Double?,
         isProModeEnabled: Bool?,
-        isFuture: Bool?
+        isFuture: Bool?,
+        subtasks: [Subtask]?
     ) async {}
     
     func deleteTask(taskId: String) async {}
+    
+    func createSubTask(
+        taskId: String,
+        title: String,
+        description: String?,
+        status: SubTaskStatus,
+        priority: SubTaskPriority,
+        estimatedDurationMinutes: Int?,
+        dueDateTime: Date?,
+        assignedTo: String?,
+        notes: String?
+    ) async {}
+    
     func clearError() {}
 }

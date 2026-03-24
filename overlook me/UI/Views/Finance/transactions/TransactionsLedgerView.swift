@@ -12,194 +12,427 @@ struct TransactionsLedgerView: View {
     
     var body: some View {
         Group {
-            if viewModel.isLoading && viewModel.transactions.isEmpty {
-                ProgressView("Loading transactions...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.transactions.isEmpty {
-                ContentUnavailableView(
-                    "No Transactions",
-                    systemImage: "doc.text",
-                    description: Text("No transactions found for the selected time range.")
+            if viewModel.isLoading && viewModel.ledgerDayGroups.isEmpty {
+                VStack(spacing: 8) {
+                    ProgressView()
+                    KLabel("Loading ledger")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.kSurface)
+            } else if viewModel.ledgerDayGroups.isEmpty {
+                KEmptyState(
+                    icon: "doc.text",
+                    title: "No Entries",
+                    message: "No transactions found for this period."
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.kSurface)
             } else {
-                transactionsList
+                ledgerContent
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.kSurface)
+        .task {
+            if viewModel.ledgerDayGroups.isEmpty {
+                await viewModel.loadLedgerSummary(userId: userId)
+            }
+        }
     }
     
-    private var transactionsList: some View {
-        List {
-            ForEach(groupedTransactions.keys.sorted().reversed(), id: \.self) { date in
-                Section {
-                    ForEach(groupedTransactions[date] ?? []) { transaction in
-                        TransactionRowView(transaction: transaction)
-                            .listRowBackground(Color.clear)
-                    }
-                } header: {
-                    Text(formatSectionDate(date))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .textCase(nil)
+    // MARK: - Ledger Content
+    
+    private var ledgerContent: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // Period picker + summary scroll with content — never sticky
+                VStack(spacing: 10) {
+                    TransactionsPeriodPicker(viewModel: viewModel)
+                    TransactionsSummaryStrip(viewModel: viewModel)
                 }
-            }
-            
-            Section {
-                paginationFooter
-                    .listRowBackground(Color.clear)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                
+                ledgerSummaryStrip
+                columnHeaders
+                
+                ForEach(viewModel.ledgerDayGroups) { group in
+                    daySection(group: group)
+                }
+                
+                periodFooter
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .refreshable {
-            await viewModel.loadTransactions(userId: userId)
+            await viewModel.loadLedgerSummary(userId: userId)
         }
     }
     
-    private var groupedTransactions: [String: [TransactionDTO]] {
-        Dictionary(grouping: viewModel.transactions) { transaction in
-            String(transaction.date.prefix(10))
-        }
+    // MARK: - Summary Strip
+    
+    private var ledgerSummaryStrip: some View {
+        let net = viewModel.ledgerNetFlow
+        return KStatRow(items: [
+            (label: "Total Debits", value: formatCurrency(viewModel.ledgerTotalDebits), color: Color.kRed),
+            (label: "Total Credits", value: formatCurrency(viewModel.ledgerTotalCredits), color: Color.kGreen),
+            (label: "Net Flow", value: "\(net >= 0 ? "+" : "")\(formatCurrency(net))", color: net >= 0 ? Color.kGreen : Color.kRed),
+            (label: "Entries", value: "\(viewModel.ledgerTxnCount)", color: Color.kPrimary)
+        ])
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
     }
     
-    private var paginationFooter: some View {
-        HStack(spacing: 16) {
-            Button(action: { loadPreviousPage() }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left.circle.fill")
-                    Text("Previous")
-                }
-                .font(.subheadline.weight(.medium))
-            }
-            .disabled(viewModel.currentPage <= 1 || viewModel.isLoading)
-            .opacity(viewModel.currentPage <= 1 ? 0.4 : 1)
+    // MARK: - Column Headers
+    
+    private var columnHeaders: some View {
+        HStack(spacing: 0) {
+            Text("DATE")
+                .frame(width: 50, alignment: .leading)
+            Text("DESCRIPTION")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("DEBIT")
+                .frame(width: 65, alignment: .trailing)
+            Text("CREDIT")
+                .frame(width: 65, alignment: .trailing)
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .tracking(0.6)
+        .foregroundStyle(Color.kTertiary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .background(Color.kDividerBg)
+    }
+    
+    // MARK: - Day Section
+    
+    private func daySection(group: DayGroup) -> some View {
+        VStack(spacing: 0) {
+            dayHeader(group: group)
             
-            Spacer()
-            
-            VStack(spacing: 2) {
-                Text("Page \(viewModel.currentPage) of \(viewModel.totalPages)")
-                    .font(.caption.weight(.medium))
-                Text("\(viewModel.totalCount) transactions")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-            
-            Spacer()
-            
-            Button(action: { loadNextPage() }) {
-                HStack(spacing: 6) {
-                    Text("Next")
-                    Image(systemName: "chevron.right.circle.fill")
-                }
-                .font(.subheadline.weight(.medium))
-            }
-            .disabled(viewModel.currentPage >= viewModel.totalPages || viewModel.isLoading)
-            .opacity(viewModel.currentPage >= viewModel.totalPages ? 0.4 : 1)
-        }
-        .padding(.vertical, 12)
-    }
-    
-    private func loadPreviousPage() {
-        let page = viewModel.currentPage - 1
-        let uid = userId
-        let vm = viewModel
-        _Concurrency.Task {
-            await vm.loadTransactions(userId: uid, page: page)
-        }
-    }
-    
-    private func loadNextPage() {
-        let page = viewModel.currentPage + 1
-        let uid = userId
-        let vm = viewModel
-        _Concurrency.Task {
-            await vm.loadTransactions(userId: uid, page: page)
-        }
-    }
-    
-    private func formatSectionDate(_ dateString: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
-        guard let date = formatter.date(from: dateString) else { return dateString }
-        
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            return date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-        }
-    }
-}
-
-// MARK: - Transaction Row View
-
-private struct TransactionRowView: View {
-    let transaction: TransactionDTO
-    
-    var body: some View {
-        HStack(spacing: 14) {
-            // Icon with glass background
-            ZStack {
-                Circle()
-                    .fill(transaction.isExpense ? Color.red.opacity(0.12) : Color.green.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                
-                Image(systemName: transaction.isExpense ? "arrow.up.right" : "arrow.down.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(transaction.isExpense ? .red : .green)
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(transaction.merchantName ?? transaction.name ?? "Unknown")
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                
-                HStack(spacing: 6) {
-                    if let category = transaction.category {
-                        Text(category)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(.quaternary, in: Capsule())
+            if viewModel.expandedDays.contains(group.date) {
+                VStack(spacing: 0) {
+                    if group.loading {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .padding(.vertical, 12)
+                            Spacer()
+                        }
+                        .background(Color.kHoverSurface)
                     }
                     
-                    if transaction.isPending == true {
-                        HStack(spacing: 3) {
-                            Circle()
-                                .fill(.orange)
-                                .frame(width: 5, height: 5)
-                            Text("Pending")
-                                .font(.caption2)
-                                .foregroundStyle(.orange)
+                    ForEach(group.transactions) { txn in
+                        transactionRow(txn: txn)
+                        
+                        if viewModel.expandedTransactionId == txn.id {
+                            transactionDetail(txn: txn)
+                        }
+                    }
+                    
+                    if group.loaded && !group.transactions.isEmpty {
+                        daySubtotal(group: group)
+                    }
+                }
+                .transition(.opacity)
+            }
+            
+            Rectangle().fill(Color.kBorder).frame(height: 1)
+        }
+    }
+    
+    private func dayHeader(group: DayGroup) -> some View {
+        let isExpanded = viewModel.expandedDays.contains(group.date)
+        let netFlow = group.dayCredit - group.dayDebit
+        
+        return Button {
+            let uid = userId
+            let vm = viewModel
+            let date = group.date
+            _Concurrency.Task {
+                await vm.toggleDay(date, userId: uid)
+            }
+        } label: {
+            HStack(spacing: 0) {
+                // Left accent bar — neutral, no color coding
+                Capsule()
+                    .fill(Color.kBorderMedium)
+                    .frame(width: 3, height: 28)
+                    .padding(.trailing, 8)
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color.kTertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .padding(.trailing, 8)
+                
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text(group.dayOfWeek)
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(-0.1)
+                            .foregroundStyle(Color.kPrimary)
+                        Text(group.label)
+                            .font(.system(size: 10, weight: .medium))
+                            .tracking(0.2)
+                            .foregroundStyle(Color.kTertiary)
+                    }
+                    
+                    HStack(spacing: 6) {
+                        Text("\(group.txnCount) ENTR\(group.txnCount == 1 ? "Y" : "IES")")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(0.4)
+                            .foregroundStyle(Color.kTertiary)
+                        
+                        if group.pendingCount > 0 {
+                            KStatusBadge(text: "\(group.pendingCount) pending", style: .pending)
                         }
                     }
                 }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 1) {
+                    if group.dayDebit > 0 {
+                        Text("-\(formatCurrency(group.dayDebit))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(-0.1)
+                            .foregroundStyle(Color.kPrimary)
+                    }
+                    if group.dayCredit > 0 {
+                        Text("+\(formatCurrency(group.dayCredit))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tracking(-0.1)
+                            .foregroundStyle(Color.kPrimary)
+                    }
+                }
             }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(formattedAmount)
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundColor(transaction.isExpense ? .primary : .green)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isExpanded ? Color.kDividerBg : Color.kSurface)
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal)
-        .padding(.vertical, 4)
+        .buttonStyle(KPressButtonStyle())
     }
     
-    private var formattedAmount: String {
-        let prefix = transaction.isExpense ? "-" : "+"
-        let code = transaction.isoCurrencyCode ?? "USD"
-        return prefix + transaction.displayAmount.formatted(.currency(code: code))
+    // MARK: - Transaction Row
+    
+    private func transactionRow(txn: TransactionDTO) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.1)) {
+                    viewModel.expandedTransactionId = viewModel.expandedTransactionId == txn.id ? nil : txn.id
+                }
+            } label: {
+                HStack(spacing: 0) {
+                    // Date
+                    Text(formatShortDate(effectiveDate(txn)))
+                        .font(.system(size: 10, weight: .medium))
+                        .tracking(0.2)
+                        .foregroundStyle(Color.kSecondary)
+                        .frame(width: 50, alignment: .leading)
+                    
+                    // Description — merchant as primary, name as secondary
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Text(txn.merchantName ?? txn.name ?? "Unknown")
+                                .font(.system(size: 12, weight: .semibold))
+                                .tracking(-0.1)
+                                .foregroundStyle(Color.kPrimary)
+                                .lineLimit(1)
+                            
+                            if txn.isPending == true {
+                                KStatusBadge(text: "P", style: .pending)
+                            }
+                        }
+                        
+                        if let name = txn.name, let merchant = txn.merchantName, name != merchant {
+                            Text(name)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.kTertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Debit
+                    if txn.isExpense {
+                        Text(formatCurrency(txn.displayAmount))
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(-0.1)
+                            .foregroundStyle(Color.kPrimary)
+                            .frame(width: 65, alignment: .trailing)
+                    } else {
+                        Text("—")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.kPlaceholder)
+                            .frame(width: 65, alignment: .trailing)
+                    }
+                    
+                    // Credit
+                    if txn.isIncome {
+                        Text(formatCurrency(txn.displayAmount))
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(-0.1)
+                            .foregroundStyle(Color.kPrimary)
+                            .frame(width: 65, alignment: .trailing)
+                    } else {
+                        Text("—")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.kPlaceholder)
+                            .frame(width: 65, alignment: .trailing)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    viewModel.expandedTransactionId == txn.id
+                        ? Color.kHoverSurface
+                        : Color.kSurface
+                )
+            }
+            .buttonStyle(.plain)
+            
+            Rectangle().fill(Color.kBorder).frame(height: 1).padding(.leading, 14)
+        }
+    }
+    
+    // MARK: - Transaction Detail
+    
+    private func transactionDetail(txn: TransactionDTO) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            let details: [(String, String?)] = [
+                ("Transaction ID", txn.transactionId),
+                ("Merchant", txn.merchantName),
+                ("Date", formatShortDate(effectiveDate(txn))),
+                ("Currency", txn.isoCurrencyCode ?? "USD"),
+                ("Status", txn.isPending == true ? "Pending" : "Posted"),
+                ("Notes", txn.notes),
+            ]
+            
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ], alignment: .leading, spacing: 8) {
+                ForEach(details.filter { $0.1 != nil }, id: \.0) { item in
+                    VStack(alignment: .leading, spacing: 2) {
+                        KLabel(item.0)
+                        Text(item.1!)
+                            .font(.system(size: 12, weight: .medium))
+                            .tracking(-0.1)
+                            .foregroundStyle(Color.kPrimary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            
+            HStack(spacing: 6) {
+                if txn.isExcludedFromBudget == true {
+                    KStatusBadge(text: "Excluded", style: .fail)
+                }
+                
+                if let category = txn.category {
+                    Text(category)
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.2)
+                        .foregroundStyle(Color.kSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.kDividerBg, in: Capsule())
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.kHoverSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
+        .transition(.opacity)
+    }
+    
+    // MARK: - Day Subtotal
+    
+    private func daySubtotal(group: DayGroup) -> some View {
+        HStack(spacing: 0) {
+            Text("")
+                .frame(width: 50, alignment: .leading)
+            Text("DAY SUBTOTAL")
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.6)
+                .foregroundStyle(Color.kSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            if group.dayDebit > 0 {
+                Text(formatCurrency(group.dayDebit))
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(-0.1)
+                    .foregroundStyle(Color.kPrimary)
+                    .frame(width: 65, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.kPlaceholder)
+                    .frame(width: 65, alignment: .trailing)
+            }
+            
+            if group.dayCredit > 0 {
+                Text(formatCurrency(group.dayCredit))
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(-0.1)
+                    .foregroundStyle(Color.kPrimary)
+                    .frame(width: 65, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.kPlaceholder)
+                    .frame(width: 65, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.kDividerBg)
+    }
+    
+    // MARK: - Period Footer
+    
+    private var periodFooter: some View {
+        VStack(spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Period Total")
+                        .font(.system(size: 14, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(Color.kPrimary)
+                    KLabel("\(viewModel.ledgerTxnCount) entries across \(viewModel.ledgerDayGroups.count) days")
+                }
+                Spacer()
+            }
+            
+            let net = viewModel.ledgerNetFlow
+            KStatRow(items: [
+                (label: "Debits", value: formatCurrency(viewModel.ledgerTotalDebits), color: Color.kRed),
+                (label: "Credits", value: formatCurrency(viewModel.ledgerTotalCredits), color: Color.kGreen),
+                (label: "Net", value: "\(net >= 0 ? "+" : "")\(formatCurrency(net))", color: net >= 0 ? Color.kGreen : Color.kRed)
+            ])
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+    
+    // MARK: - Helpers
+    
+    private func effectiveDate(_ txn: TransactionDTO) -> String {
+        if txn.isPending == true, let authDate = txn.createdAt {
+            return authDate
+        }
+        return txn.date
+    }
+    
+    private func formatCurrency(_ value: Double) -> String {
+        abs(value).formatted(.currency(code: "USD").precision(.fractionLength(0)))
+    }
+    
+    private func formatShortDate(_ dateString: String) -> String {
+        let date = viewModel.parseDate(dateString)
+        return date.formatted(.dateTime.month(.abbreviated).day())
     }
 }
 

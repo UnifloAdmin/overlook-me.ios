@@ -10,14 +10,17 @@ import SwiftUI
 struct MainContainerView: View {
     @StateObject private var tabBar = TabBarStyleStore()
     @State private var selection: AppTab = .home
-    @State private var showingSideNav = false
-    @State private var pendingNavigation: SideNavRoute?
+    @State private var previousTab: AppTab = .home
+    @State private var searchText = ""
     
     // Keep navigation *inside* tabs so the tab bar stays visible.
     @State private var homePath = NavigationPath()
     
     // Shared ViewModel for Transactions tabs
     @State private var transactionsViewModel = TransactionsViewModel()
+    
+    // Track which health sub-route is active
+    @State private var activeHealthRoute: SideNavRoute = .healthFitness
     
     var body: some View {
         TabView(selection: $selection) {
@@ -58,29 +61,23 @@ struct MainContainerView: View {
             // Native “separate” trailing button, like Apple News.
             // We use the system role so iOS renders it as the detached pill/button.
             Tab(value: .searchProxy, role: .search) {
-                Color.clear
+                SideNavigationView(
+                    isPresented: .constant(true),
+                    searchText: $searchText,
+                    onSelectRoute: { route in
+                        selection = previousTab
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            open(route)
+                        }
+                    }
+                )
+                .searchable(text: $searchText, placement: .automatic, prompt: "Search sections")
             }
         }
         .tabBarMinimizeBehavior(.never)
-        .sheet(isPresented: $showingSideNav, onDismiss: {
-            guard let pendingRoute = pendingNavigation else { return }
-            pendingNavigation = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                open(pendingRoute)
-            }
-        }) {
-            SideNavigationView(
-                isPresented: $showingSideNav,
-                onSelectRoute: { route in
-                    pendingNavigation = route
-                }
-            )
-        }
         .onChange(of: selection) { oldValue, newValue in
-            if newValue == .searchProxy {
-                showingSideNav = true
-                selection = oldValue == .searchProxy ? .home : oldValue
-                return
+            if newValue != .searchProxy {
+                previousTab = newValue
             }
             if tabBar.config.messages == nil && newValue == .messages {
                 selection = oldValue
@@ -119,8 +116,19 @@ struct MainContainerView: View {
             switchMode(to: .dailyHabits)
         case .tasks:
             switchMode(to: .tasks)
-        case .healthDashboard, .healthInsights, .fitness:
-            switchMode(to: .health)
+        case .waterTracker, .reminders:
+            pushRoute(route)
+        case .healthDashboard, .healthInsights, .fitness,
+             .healthSleep, .healthHeart, .healthMobility,
+             .healthRespiration, .healthFitness, .healthExercise:
+            activeHealthRoute = route
+            if tabBar.config == .health {
+                // Already in health mode — just reset the path to refresh the view
+                homePath = NavigationPath()
+                selection = .home
+            } else {
+                switchMode(to: .health)
+            }
         case .bankAccounts:
             switchMode(to: .bankAccounts)
         case .transactions:
@@ -136,9 +144,7 @@ struct MainContainerView: View {
         guard tabBar.config != config else { return }
         homePath = NavigationPath()
         selection = .home
-        withAnimation(.easeInOut(duration: 0.3)) {
-            tabBar.config = config
-        }
+        tabBar.config = config
     }
 
     private func pushRoute(_ route: SideNavRoute) {
@@ -175,11 +181,31 @@ struct MainContainerView: View {
             }
         } else if tabBar.config == .health {
             NavigationStack {
-                FitnessView()
+                healthViewForRoute(activeHealthRoute)
                     .tabBarConfig(.health)
             }
         } else {
             HomeView(path: $homePath)
+        }
+    }
+    
+    @ViewBuilder
+    func healthViewForRoute(_ route: SideNavRoute) -> some View {
+        switch route {
+        case .healthSleep:
+            SleepView()
+        case .healthHeart:
+            HeartView()
+        case .healthMobility:
+            MobilityView()
+        case .healthRespiration:
+            RespirationView()
+        case .healthExercise:
+            ExerciseView()
+        case .healthInsights:
+            HealthInsightsView()
+        default:
+            FitnessView()
         }
     }
     
@@ -263,6 +289,10 @@ struct MainContainerView: View {
             NavigationStack {
                 AddNewHabitTabView()
                     .tabBarConfig(.dailyHabits)
+            }
+        } else if tabBar.config == .transactions {
+            NavigationStack {
+                TransactionsView(viewModel: transactionsViewModel, tab: .search)
             }
         } else {
             NavigationStack {

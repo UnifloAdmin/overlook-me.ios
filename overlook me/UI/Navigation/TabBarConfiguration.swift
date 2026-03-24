@@ -60,7 +60,7 @@ struct TabBarConfiguration: Equatable {
         home: .init(title: "Analytics", systemImage: "chart.bar.xaxis"),
         explore: .init(title: "Ledger", systemImage: "list.bullet.rectangle"),
         alerts: .init(title: "Merchants", systemImage: "storefront"),
-        messages: nil
+        messages: .init(title: "Search", systemImage: "magnifyingglass")
     )
     
     static let notifications = TabBarConfiguration(
@@ -86,7 +86,13 @@ struct TabBarConfiguration: Equatable {
 }
 
 final class TabBarStyleStore: ObservableObject {
-    @Published var config: TabBarConfiguration = .default
+    var config: TabBarConfiguration = .default {
+        willSet {
+            if newValue != config {
+                objectWillChange.send()
+            }
+        }
+    }
 }
 
 private struct TabBarConfigModifier: ViewModifier {
@@ -95,7 +101,11 @@ private struct TabBarConfigModifier: ViewModifier {
     
     func body(content: Content) -> some View {
         content
-            .onAppear { tabBar.config = config }
+            .onAppear {
+                if tabBar.config != config {
+                    tabBar.config = config
+                }
+            }
     }
 }
 
