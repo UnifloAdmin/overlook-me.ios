@@ -21,33 +21,31 @@ struct BankAccountsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                summaryHeader
-                
-                if viewModel.isLoading || linkManager.isLoading {
-                    loadingView
-                } else if viewModel.accounts.isEmpty {
-                    emptyState
-                } else {
-                    accountsList
-                }
-            }
-        }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Accounts")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: addAccount) {
-                    if linkManager.isLoading {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "plus")
-                            .fontWeight(.semibold)
+                HStack(spacing: 8) {
+                    heroPill(label: "Active", value: "\(viewModel.activeAccountsCount)")
+                    if viewModel.inactiveAccountsCount > 0 {
+                        heroPill(label: "Attention", value: "\(viewModel.inactiveAccountsCount)")
                     }
                 }
-                .disabled(linkManager.isLoading)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 14)
+
+                VStack(spacing: 12) {
+                    if viewModel.isLoading || linkManager.isLoading {
+                        loadingView
+                    } else if viewModel.accounts.isEmpty {
+                        emptyState
+                    } else {
+                        accountsList
+                    }
+                }
+                .background(Color.kSurface)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.kSurface)
+        .navigationTitle("Accounts")
         .onAppear {
             setupLinkCallbacks()
             loadAccountsIfNeeded()
@@ -81,12 +79,10 @@ struct BankAccountsView: View {
             plaidHandler = nil
             loadAccountsIfNeeded()
         }
-        
         linkManager.onExit = {
             showPlaidLink = false
             plaidHandler = nil
         }
-        
         linkManager.onReady = { handler in
             plaidHandler = handler
             showPlaidLink = true
@@ -94,7 +90,6 @@ struct BankAccountsView: View {
     }
     
     private func addAccount() {
-        print("🔘 [BankAccountsView] Add account tapped, userId: \(userId)")
         linkManager.openLink(userId: userId)
     }
     
@@ -104,91 +99,94 @@ struct BankAccountsView: View {
         }
     }
     
-    // MARK: - Summary Header
-    
-    private var summaryHeader: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 8) {
-                Text("Total Balance")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Text(formatCurrency(viewModel.totalBalance))
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                
-                HStack(spacing: 16) {
-                    Label("\(viewModel.activeAccountsCount) Active", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                    
-                    if viewModel.inactiveAccountsCount > 0 {
-                        Label("\(viewModel.inactiveAccountsCount) Needs Attention", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-            .padding(.horizontal, 20)
-            .background(Color(.systemBackground).opacity(0.8))
-            .cornerRadius(20)
-        }
-        .padding()
+    // MARK: - Hero Pill
+
+    private func heroPill(label: String, value: String) -> some View {
+        Text("\(value)  \(label.uppercased())")
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .tracking(0.6)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.18))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 0.5))
+            )
     }
-    
+
     // MARK: - Accounts List
     
     private var accountsList: some View {
-        LazyVStack(spacing: 12) {
-            ForEach(viewModel.accounts) { account in
-                AccountCard(
-                    account: account,
-                    onReconnect: {
-                        linkManager.openLinkForReauth(accountId: account.id, userId: userId)
+        VStack(spacing: 0) {
+            Button(action: addAccount) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Link New")
+                        .font(.system(size: 13, weight: .semibold))
+                        .tracking(-0.1)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.kPrimary, in: Capsule())
+            }
+            .buttonStyle(KPressButtonStyle())
+            .frame(width: UIScreen.main.bounds.width * 0.54)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+
+            VStack(spacing: 0) {
+                ForEach(Array(viewModel.accounts.enumerated()), id: \.element.id) { index, account in
+                    AccountRow(
+                        account: account,
+                        onReconnect: {
+                            linkManager.openLinkForReauth(accountId: account.id, userId: userId)
+                        }
+                    )
+
+                    if index < viewModel.accounts.count - 1 {
+                        Rectangle()
+                            .fill(Color.kBorder)
+                            .frame(height: 1)
+                            .padding(.horizontal, 16)
                     }
-                )
+                }
             }
-            
-            addAccountButton
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 100)
-    }
-    
-    private var addAccountButton: some View {
-        Button(action: addAccount) {
-            HStack(spacing: 12) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.accentColor)
-                
-                Text("Link New Account")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
+
+            Rectangle()
+                .fill(Color.kBorder)
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+
+            HStack {
                 Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .trailing, spacing: 2) {
+                    KLabel("Total Balance")
+                    Text(formatCurrency(viewModel.totalBalance))
+                        .font(.system(size: 22, weight: .bold))
+                        .tracking(-0.8)
+                        .foregroundStyle(Color.kPrimary)
+                        .monospacedDigit()
+                }
             }
-            .padding()
-            .background(Color(.systemBackground).opacity(0.8))
-            .cornerRadius(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .padding(.bottom, 100)
         }
-        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - Loading View
     
     private var loadingView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             ProgressView()
-                .scaleEffect(1.2)
-            Text("Loading accounts...")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                .tint(Color.kSecondary)
+            KLabel("Loading accounts…")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
@@ -197,44 +195,14 @@ struct BankAccountsView: View {
     // MARK: - Empty State
     
     private var emptyState: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(Color(.systemGray5))
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "building.columns.fill")
-                    .font(.system(size: 40))
-                    .foregroundColor(.accentColor)
-            }
-            
-            VStack(spacing: 8) {
-                Text("No Accounts Connected")
-                    .font(.title2.bold())
-                
-                Text("Link your bank accounts to automatically track balances and transactions.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-            
-            Button(action: addAccount) {
-                HStack {
-                    if linkManager.isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    }
-                    Label(linkManager.isLoading ? "Opening..." : "Link Your First Account", systemImage: "link")
-                        .font(.headline)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(linkManager.isLoading)
-        }
-        .padding(.vertical, 60)
+        KEmptyState(
+            icon: "building.columns",
+            title: "No Accounts Connected",
+            message: "Link your bank accounts to automatically track balances and transactions.",
+            ctaLabel: linkManager.isLoading ? "Opening…" : "Link Your First Account",
+            ctaAction: addAccount
+        )
+        .padding(.horizontal, 16)
     }
     
     private func formatCurrency(_ value: Double) -> String {
@@ -245,158 +213,169 @@ struct BankAccountsView: View {
     }
 }
 
-// MARK: - Account Card
+private extension Array where Element: Equatable {
+    func uniqued() -> [Element] {
+        reduce([]) { $0.contains($1) ? $0 : $0 + [$1] }
+    }
+}
 
-private struct AccountCard: View {
+// MARK: - Account Row
+
+private struct AccountRow: View {
     let account: ConnectedAccountDTO
     let onReconnect: () -> Void
-    
+
     @State private var isExpanded = false
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                HStack(spacing: 14) {
-                    BankLogoView(institutionName: account.institutionName)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(account.institutionName)
-                            .font(.headline)
-                        
-                        if let firstAccount = account.accounts?.first,
-                           let lastFour = firstAccount.lastFourDigits {
-                            Text("••\(lastFour)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    statusBadge
-                }
-                
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Balance")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(account.totalBalance))
-                            .font(.title2.bold().monospacedDigit())
-                    }
-                    
-                    Spacer()
-                    
-                    if let subAccounts = account.accounts, subAccounts.count > 1 {
-                        Button(action: {
-                            withAnimation(.spring()) {
-                                isExpanded.toggle()
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Line 1 — logo · name · balance
+                    HStack(spacing: 12) {
+                        BankLogoView(institutionName: account.institutionName)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(account.institutionName)
+                                .font(.system(size: 14, weight: .semibold))
+                                .tracking(-0.3)
+                                .foregroundStyle(Color.kPrimary)
+                                .lineLimit(1)
+
+                            if let subs = account.accounts, !subs.isEmpty {
+                                let types = subs.compactMap { $0.subtype ?? $0.accountType }
+                                    .map { $0.capitalized }
+                                    .uniqued()
+                                    .joined(separator: " · ")
+                                if !types.isEmpty { KLabel(types) }
                             }
-                        }) {
-                            HStack(spacing: 4) {
-                                Text("\(subAccounts.count) accounts")
-                                    .font(.caption)
+                        }
+
+                        Spacer()
+
+                        Text(formatCurrency(account.totalBalance))
+                            .font(.system(size: 17, weight: .bold))
+                            .tracking(-0.6)
+                            .foregroundStyle(Color.kPrimary)
+                            .monospacedDigit()
+
+                        if let subs = account.accounts, subs.count > 1 {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    isExpanded.toggle()
+                                }
+                            } label: {
                                 Image(systemName: "chevron.down")
-                                    .font(.caption2)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Color.kTertiary)
                                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
                             }
-                            .foregroundColor(.secondary)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
-                }
-                
-                if isExpanded, let subAccounts = account.accounts {
-                    Divider()
-                    
-                    VStack(spacing: 10) {
-                        ForEach(subAccounts) { subAccount in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(subAccount.name ?? subAccount.accountName ?? "Account")
-                                        .font(.subheadline)
-                                    
-                                    if let type = subAccount.accountType {
-                                        Text(type.capitalized)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                
-                                Spacer()
-                                
-                                Text(formatCurrency(subAccount.currentBalance ?? subAccount.balance ?? 0))
-                                    .font(.subheadline.monospacedDigit())
+
+                    // Line 2 — status + date chips
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            if account.isActive {
+                                KStatusBadge(text: "Active", style: .done)
+                            } else {
+                                Button("Reconnect", action: onReconnect)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Color.kRed)
+                                    .buttonStyle(.plain)
                             }
+                            dateChip(icon: "link",                        label: "Connected", value: account.connectedAt)
+                            dateChip(icon: "arrow.clockwise",             label: "Synced",    value: account.lastSyncedAt)
+                            dateChip(icon: "dollarsign.arrow.circlepath", label: "Balance",   value: account.lastBalanceRefreshedAt)
+                            dateChip(icon: "clock.arrow.circlepath",      label: "Next",      value: account.nextBalanceRefreshAt)
                         }
                     }
                 }
-                
-                HStack {
-                    Image(systemName: "clock")
-                        .font(.caption2)
-                    Text("Connected \(formatDate(account.connectedAt))")
-                        .font(.caption)
-                    
-                    Spacer()
-                    
-                    if !account.isActive {
-                        Button("Reconnect", action: onReconnect)
-                            .font(.caption.bold())
-                            .foregroundColor(.orange)
+                .padding(.leading, 16)
+                .padding(.trailing, 16)
+                .padding(.vertical, 22)
+            }
+
+            // Expanded sub-accounts
+            if isExpanded, let subAccounts = account.accounts {
+                Rectangle()
+                    .fill(Color.kBorder)
+                    .frame(height: 1)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(subAccounts.enumerated()), id: \.element.id) { index, sub in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sub.name ?? sub.accountName ?? "Account")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Color.kPrimary)
+                                KLabel([sub.subtype?.capitalized, sub.lastFourDigits.map { "•• \($0)" }]
+                                    .compactMap { $0 }.joined(separator: "  ·  "))
+                            }
+                            Spacer()
+                            Text(formatCurrency(sub.currentBalance ?? sub.balance ?? 0))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.kPrimary)
+                                .monospacedDigit()
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+
+                        if index < subAccounts.count - 1 {
+                            Rectangle()
+                                .fill(Color.kBorder)
+                                .frame(height: 1)
+                                .padding(.horizontal, 20)
+                        }
                     }
                 }
-                .foregroundColor(.secondary)
+                .background(Color.kDividerBg)
             }
-            .padding()
         }
-        .background(Color(.systemBackground).opacity(0.8))
-        .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(account.isActive ? Color.clear : Color.orange.opacity(0.5), lineWidth: 1)
-        )
     }
-    
-    private var statusBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(account.isActive ? Color.green : Color.orange)
-                .frame(width: 6, height: 6)
-            
-            Text(account.isActive ? "Active" : "Error")
-                .font(.caption2.bold())
-                .foregroundColor(account.isActive ? .green : .orange)
+
+    @ViewBuilder
+    private func dateChip(icon: String, label: String, value: String?) -> some View {
+        if let value {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .medium))
+                Text("\(label) \(relativeTime(value))")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color.kSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.kDividerBg, in: Capsule())
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            (account.isActive ? Color.green : Color.orange).opacity(0.1)
-        )
-        .clipShape(Capsule())
     }
-    
-    private func formatDate(_ dateString: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        if let date = formatter.date(from: dateString) {
-            let displayFormatter = DateFormatter()
-            displayFormatter.dateStyle = .medium
-            return displayFormatter.string(from: date)
-        }
-        
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: dateString) {
-            let displayFormatter = DateFormatter()
-            displayFormatter.dateStyle = .medium
-            return displayFormatter.string(from: date)
-        }
-        
-        return dateString
+
+    private func relativeTime(_ isoString: String) -> String {
+        guard let date = parseISO(isoString) else { return "—" }
+        let rel = RelativeDateTimeFormatter()
+        rel.unitsStyle = .abbreviated
+        return rel.localizedString(for: date, relativeTo: Date())
     }
-    
+
+    private func parseISO(_ string: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: string) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        if let d = f.date(from: string) { return d }
+        // No timezone suffix — parse manually
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(identifier: "UTC")
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss"] {
+            df.dateFormat = fmt
+            if let d = df.date(from: string) { return d }
+        }
+        return nil
+    }
+
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
@@ -411,27 +390,24 @@ private struct BankLogoView: View {
     let institutionName: String
     
     private var iconColor: Color {
-        switch institutionName.lowercased() {
-        case let name where name.contains("chase"):
-            return .blue
-        case let name where name.contains("wells fargo"):
-            return .red
-        case let name where name.contains("bank of america"):
-            return .red
-        case let name where name.contains("capital one"):
-            return .orange
-        default:
-            return .teal
-        }
+        let name = institutionName.lowercased()
+        if name.contains("chase") { return .blue }
+        if name.contains("wells fargo") || name.contains("bank of america") { return .red }
+        if name.contains("capital one") { return Color(red: 0.78, green: 0.18, blue: 0.18) }
+        return Color.kSecondary
     }
     
     var body: some View {
         Image(systemName: "building.columns.fill")
-            .font(.title2)
-            .foregroundColor(iconColor)
-            .frame(width: 44, height: 44)
-            .background(iconColor.opacity(0.1))
-            .cornerRadius(12)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(iconColor)
+            .frame(width: 36, height: 36)
+            .background(Color.kDividerBg)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.kBorder, lineWidth: 1)
+            )
     }
 }
 

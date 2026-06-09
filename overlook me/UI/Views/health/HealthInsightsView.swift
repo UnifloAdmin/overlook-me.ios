@@ -10,39 +10,41 @@ struct HealthInsightsView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 20) {
-                if health.isLoading && health.lastUpdated == nil {
-                    loadingView
-                } else {
-                    wellnessScoreCard
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 20)
+            VStack(spacing: 0) {
+                VStack(spacing: 20) {
+                    if health.isLoading && health.lastUpdated == nil {
+                        loadingView
+                    } else {
+                        wellnessScoreCard
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 20)
 
-                    atAGlance
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 16)
+                        atAGlance
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 16)
 
-                    sleepContent
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 12)
+                        sleepContent
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 12)
 
-                    heartContent
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 10)
+                        heartContent
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 10)
 
-                    hydrationContent
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 8)
+                        hydrationContent
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 8)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 100)
+                .background(Color(.systemBackground))
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 100)
         }
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
         .navigationTitle("Health")
-        .navigationBarTitleDisplayMode(.large)
         .task {
             guard !hasRequestedAuth else { return }
             hasRequestedAuth = true

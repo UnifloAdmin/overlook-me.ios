@@ -26,6 +26,7 @@ struct DailyHabitsView: View {
     @State private var selectedHabitForDetail: DailyHabitDTO?
     @State private var selectedHabitForNotification: DailyHabitDTO?
     @State private var selectedHabitForPomodoro: DailyHabitDTO?
+    @State private var pomodoroController: PomodoroTimerController?
     @State private var selectedHabitForCompletion: (habit: DailyHabitDTO, actionType: HabitCompletionSheet.HabitActionType)?
     @State private var notificationUpdateTrigger = UUID()
     @State private var isBootstrappingHabits = true
@@ -46,19 +47,27 @@ struct DailyHabitsView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                statsHeader
-                habitsSection
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    statsHeader
+                    habitsSection
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 48)
+                .background(Color.kalBackground)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 48)
         }
+        .scrollContentBackground(.hidden)
         .background(Color.kalBackground.ignoresSafeArea())
         .navigationTitle("Daily Habits")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar { toolbarContent }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { isPresentingAddHabit = true } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
         .refreshable { await loadHabitsIfNeeded(force: true) }
         .task { await loadHabitsIfNeeded(force: true) }
         .onChange(of: backendUserId) { _ in
@@ -105,9 +114,17 @@ struct DailyHabitsView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(item: $selectedHabitForPomodoro) { habit in
-            PomodoroSheet(habit: habit)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+            if let ctrl = pomodoroController {
+                PomodoroSheet(habit: habit, controller: ctrl)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(.regularMaterial)
+            }
+        }
+        .onChange(of: selectedHabitForPomodoro) { _, habit in
+            if let habit {
+                pomodoroController = PomodoroTimerController(habitId: habit.id, habitName: habit.name)
+            }
         }
         .sheet(item: Binding(
             get: { selectedHabitForCompletion.map { $0.habit } },

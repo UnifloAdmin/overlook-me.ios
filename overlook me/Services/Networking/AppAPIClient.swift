@@ -5,6 +5,7 @@ enum AppAPIClient {
         URLSessionAPIClient(
             baseURL: APIConfiguration.baseURL,
             tokenProvider: KeychainAuthTokenProvider(),
+            tokenRefresher: KeychainAuthTokenRefresher(),
             responseDecoder: ResponseDecoder(config: APIConfiguration.responseEncoding)
         )
     }

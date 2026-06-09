@@ -79,7 +79,7 @@ struct HomeView: View {
         case .productivityDashboard:
             ProductivityDashboardView()
                 .toolbar(.visible, for: .navigationBar)
-        case .tasks, .dailyHabits:
+        case .tasks, .dailyHabits, .dSprints:
             EmptyView()
         case .waterTracker:
             WaterTrackerView()
@@ -93,6 +93,9 @@ struct HomeView: View {
                 .toolbar(.visible, for: .navigationBar)
         case .healthSleep, .healthHeart, .healthMobility, .healthRespiration, .healthFitness, .healthExercise:
             HealthInsightsView()
+                .toolbar(.visible, for: .navigationBar)
+        case .quitVape:
+            QuitVapeView()
                 .toolbar(.visible, for: .navigationBar)
         case .fitness:
             FitnessView()

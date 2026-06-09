@@ -49,103 +49,81 @@ private struct WaveDecorations: View {
     var isLanding: Bool
     var isDark: Bool
 
-    private struct Decoration: Identifiable {
+    // Clean 5-column honeycomb grid of app feature icons
+    private struct IconTile: Identifiable {
         let id: Int
         let symbol: String
-        let x: CGFloat
-        let y: CGFloat
-        let size: CGFloat
-        let opacity: Double
-        let rotation: Double
-        let floatSpeed: Double   // animation duration (0 = no float)
-        let floatRange: CGFloat  // how far it bobs
+        let col: Int      // 0-4
+        let row: Int       // 0-5
     }
 
-    // Laid out on a staggered 5-column grid, no overlaps
-    private var items: [Decoration] {[
-        // ── Row 1  y ≈ 0.08 ──
-        Decoration(id: 0,  symbol: "sparkle",                x: 0.10, y: 0.07, size: 18, opacity: 0.20, rotation: 30,  floatSpeed: 2.0, floatRange: 3),
-        Decoration(id: 1,  symbol: "dollarsign.circle.fill", x: 0.32, y: 0.09, size: 40, opacity: 0.20, rotation: 0,   floatSpeed: 3.4, floatRange: 6),
-        Decoration(id: 2,  symbol: "creditcard.fill",        x: 0.56, y: 0.08, size: 34, opacity: 0.18, rotation: -8,  floatSpeed: 4.0, floatRange: 5),
-        Decoration(id: 3,  symbol: "waveform.path.ecg",      x: 0.80, y: 0.09, size: 38, opacity: 0.18, rotation: 0,   floatSpeed: 3.8, floatRange: 5),
-
-        // ── Row 2  y ≈ 0.22 (offset columns) ──
-        Decoration(id: 4,  symbol: "leaf.fill",              x: 0.12, y: 0.22, size: 36, opacity: 0.20, rotation: 25,  floatSpeed: 2.8, floatRange: 7),
-        Decoration(id: 5,  symbol: "heart.fill",             x: 0.36, y: 0.23, size: 44, opacity: 0.22, rotation: -10, floatSpeed: 3.0, floatRange: 7),
-        Decoration(id: 6,  symbol: "banknote.fill",          x: 0.60, y: 0.22, size: 30, opacity: 0.16, rotation: 8,   floatSpeed: 4.2, floatRange: 5),
-        Decoration(id: 7,  symbol: "target",                 x: 0.84, y: 0.23, size: 28, opacity: 0.15, rotation: 0,   floatSpeed: 4.4, floatRange: 4),
-
-        // ── Row 3  y ≈ 0.36 ──
-        Decoration(id: 8,  symbol: "moon.stars.fill",        x: 0.10, y: 0.37, size: 32, opacity: 0.18, rotation: 15,  floatSpeed: 3.2, floatRange: 6),
-        Decoration(id: 9,  symbol: "chart.line.uptrend.xyaxis", x: 0.34, y: 0.36, size: 30, opacity: 0.16, rotation: 0, floatSpeed: 3.0, floatRange: 5),
-        Decoration(id: 10, symbol: "drop.fill",              x: 0.56, y: 0.37, size: 28, opacity: 0.17, rotation: 12,  floatSpeed: 3.6, floatRange: 6),
-        Decoration(id: 11, symbol: "figure.run",             x: 0.78, y: 0.36, size: 36, opacity: 0.17, rotation: 0,   floatSpeed: 3.8, floatRange: 5),
-        Decoration(id: 12, symbol: "sparkle",                x: 0.95, y: 0.37, size: 14, opacity: 0.18, rotation: 45,  floatSpeed: 2.2, floatRange: 3),
-
-        // ── Row 4  y ≈ 0.50 (offset columns) ──
-        Decoration(id: 13, symbol: "figure.yoga",            x: 0.10, y: 0.51, size: 30, opacity: 0.15, rotation: 0,   floatSpeed: 4.0, floatRange: 5),
-        Decoration(id: 14, symbol: "flame.fill",             x: 0.34, y: 0.50, size: 30, opacity: 0.17, rotation: -6,  floatSpeed: 2.8, floatRange: 6),
-        Decoration(id: 15, symbol: "brain.head.profile",     x: 0.56, y: 0.51, size: 28, opacity: 0.15, rotation: -5,  floatSpeed: 3.5, floatRange: 5),
-        Decoration(id: 16, symbol: "wallet.bifold.fill",     x: 0.78, y: 0.50, size: 26, opacity: 0.14, rotation: -8,  floatSpeed: 4.0, floatRange: 4),
-
-        // ── Row 5  y ≈ 0.64 ──
-        Decoration(id: 17, symbol: "checkmark.circle.fill",  x: 0.10, y: 0.65, size: 26, opacity: 0.16, rotation: 0,   floatSpeed: 3.6, floatRange: 5),
-        Decoration(id: 18, symbol: "clock.fill",             x: 0.32, y: 0.64, size: 26, opacity: 0.15, rotation: 0,   floatSpeed: 3.4, floatRange: 5),
-        Decoration(id: 19, symbol: "stethoscope",            x: 0.54, y: 0.65, size: 26, opacity: 0.14, rotation: 10,  floatSpeed: 4.2, floatRange: 4),
-        Decoration(id: 20, symbol: "bell.fill",              x: 0.76, y: 0.64, size: 22, opacity: 0.13, rotation: 8,   floatSpeed: 3.0, floatRange: 5),
-
-        // ── Row 6  y ≈ 0.78 (fewer — wave curves away) ──
-        Decoration(id: 21, symbol: "sparkle",                x: 0.06, y: 0.78, size: 16, opacity: 0.16, rotation: 20,  floatSpeed: 2.4, floatRange: 4),
-        Decoration(id: 22, symbol: "zzz",                    x: 0.24, y: 0.78, size: 22, opacity: 0.14, rotation: 10,  floatSpeed: 2.8, floatRange: 6),
-        Decoration(id: 23, symbol: "bed.double.fill",        x: 0.44, y: 0.77, size: 24, opacity: 0.13, rotation: 0,   floatSpeed: 4.6, floatRange: 4),
-        Decoration(id: 24, symbol: "calendar",               x: 0.64, y: 0.76, size: 22, opacity: 0.12, rotation: -5,  floatSpeed: 4.8, floatRange: 3),
-
-        // ── Tiny dots scattered in gaps ──
-        Decoration(id: 25, symbol: "circle.fill",            x: 0.22, y: 0.15, size: 6,  opacity: 0.14, rotation: 0, floatSpeed: 0, floatRange: 0),
-        Decoration(id: 26, symbol: "circle.fill",            x: 0.70, y: 0.15, size: 5,  opacity: 0.12, rotation: 0, floatSpeed: 0, floatRange: 0),
-        Decoration(id: 27, symbol: "circle.fill",            x: 0.46, y: 0.30, size: 6,  opacity: 0.12, rotation: 0, floatSpeed: 0, floatRange: 0),
-        Decoration(id: 28, symbol: "circle.fill",            x: 0.22, y: 0.44, size: 5,  opacity: 0.10, rotation: 0, floatSpeed: 0, floatRange: 0),
-        Decoration(id: 29, symbol: "circle.fill",            x: 0.68, y: 0.44, size: 7,  opacity: 0.12, rotation: 0, floatSpeed: 0, floatRange: 0),
-        Decoration(id: 30, symbol: "circle.fill",            x: 0.46, y: 0.58, size: 5,  opacity: 0.10, rotation: 0, floatSpeed: 0, floatRange: 0),
-        Decoration(id: 31, symbol: "circle.fill",            x: 0.92, y: 0.56, size: 6,  opacity: 0.10, rotation: 0, floatSpeed: 0, floatRange: 0),
-    ]}
+    private let tiles: [IconTile] = [
+        // Row 0
+        IconTile(id: 0,  symbol: "heart",              col: 0, row: 0),
+        IconTile(id: 1,  symbol: "dollarsign",          col: 1, row: 0),
+        IconTile(id: 2,  symbol: "chart.line.uptrend.xyaxis", col: 2, row: 0),
+        IconTile(id: 3,  symbol: "creditcard",          col: 3, row: 0),
+        IconTile(id: 4,  symbol: "waveform.path.ecg",   col: 4, row: 0),
+        // Row 1 (offset)
+        IconTile(id: 5,  symbol: "leaf",                col: 0, row: 1),
+        IconTile(id: 6,  symbol: "brain.head.profile",  col: 1, row: 1),
+        IconTile(id: 7,  symbol: "figure.run",          col: 2, row: 1),
+        IconTile(id: 8,  symbol: "building.columns",    col: 3, row: 1),
+        // Row 2
+        IconTile(id: 9,  symbol: "moon.stars",          col: 0, row: 2),
+        IconTile(id: 10, symbol: "flame",               col: 1, row: 2),
+        IconTile(id: 11, symbol: "target",              col: 2, row: 2),
+        IconTile(id: 12, symbol: "bell",                col: 3, row: 2),
+        IconTile(id: 13, symbol: "calendar",            col: 4, row: 2),
+        // Row 3 (offset)
+        IconTile(id: 14, symbol: "checkmark.circle",    col: 0, row: 3),
+        IconTile(id: 15, symbol: "clock",               col: 1, row: 3),
+        IconTile(id: 16, symbol: "stethoscope",         col: 2, row: 3),
+        IconTile(id: 17, symbol: "wallet.bifold",       col: 3, row: 3),
+        // Row 4
+        IconTile(id: 18, symbol: "bed.double",          col: 0, row: 4),
+        IconTile(id: 19, symbol: "drop",                col: 1, row: 4),
+        IconTile(id: 20, symbol: "figure.yoga",         col: 2, row: 4),
+        IconTile(id: 21, symbol: "bolt",                col: 3, row: 4),
+        IconTile(id: 22, symbol: "sparkle",             col: 4, row: 4),
+        // Row 5 (offset)
+        IconTile(id: 23, symbol: "pills",               col: 0, row: 5),
+        IconTile(id: 24, symbol: "fork.knife",          col: 1, row: 5),
+        IconTile(id: 25, symbol: "trophy",              col: 2, row: 5),
+        IconTile(id: 26, symbol: "chart.pie",           col: 3, row: 5),
+    ]
 
     var body: some View {
-        let boost: Double = isDark ? 1.4 : 1.0
         GeometryReader { geo in
-            ForEach(items) { item in
-                FloatingIcon(
-                    symbol: item.symbol,
-                    baseSize: isLanding ? item.size : item.size * 0.45,
-                    opacity: item.opacity * boost,
-                    rotation: item.rotation,
-                    floatSpeed: item.floatSpeed,
-                    floatRange: isLanding ? item.floatRange : item.floatRange * 0.4
-                )
-                .position(x: geo.size.width * item.x, y: geo.size.height * item.y)
+            let tileSize: CGFloat = isLanding ? 44 : 24
+            let spacingX = geo.size.width / 5.2
+            let spacingY: CGFloat = isLanding ? 62 : 36
+            let centerX = geo.size.width * 0.5
+            let centerY = geo.size.height * 0.42
+
+            ForEach(tiles) { tile in
+                let isOffset = tile.row % 2 == 1
+                let x = spacingX * (CGFloat(tile.col) + 0.5) + (isOffset ? spacingX * 0.5 : 0)
+                let y = spacingY * CGFloat(tile.row) + spacingY * 0.6
+
+                // Radial distance from center → fade edges
+                let dx = (x - centerX) / geo.size.width
+                let dy = (y - centerY) / geo.size.height
+                let dist = sqrt(dx * dx + dy * dy)
+                let fade = max(0.04, min(0.22, 0.24 - dist * 0.5))
+
+                Image(systemName: tile.symbol)
+                    .font(.system(size: isLanding ? 16 : 10, weight: .light))
+                    .foregroundStyle(.white.opacity(fade * 2.5))
+                    .frame(width: tileSize, height: tileSize)
+                    .background(
+                        RoundedRectangle(cornerRadius: isLanding ? 10 : 6, style: .continuous)
+                            .fill(.white.opacity(fade))
+                    )
+                    .position(x: x, y: y)
             }
         }
         .allowsHitTesting(false)
-    }
-}
-
-// MARK: - Floating Icon
-
-private struct FloatingIcon: View {
-    let symbol: String
-    let baseSize: CGFloat
-    let opacity: Double
-    let rotation: Double
-    let floatSpeed: Double
-    let floatRange: CGFloat
-
-    @State private var floating = false
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: baseSize))
-            .foregroundStyle(.white.opacity(opacity))
-            .rotationEffect(.degrees(rotation))
     }
 }
 
@@ -342,6 +320,7 @@ struct LandingView: View {
     @State private var errorMessage = ""
     @State private var successMessage = ""
     @State private var isLoading = false
+    @State private var isAuthenticatingPasskey = false
     @State private var landingAppeared = false
     @State private var screenHeight: CGFloat = 852
     @State private var showQuickUnlockPrompt = false
@@ -524,45 +503,49 @@ struct LandingView: View {
                     Text("Overlook Me")
                         .font(.system(size: 38, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.kalPrimary)
-                    Text("Your life, one dashboard.")
+                    Text("An ecosystem to fuel the day")
                         .font(.system(size: 16, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.kalMuted)
                 }
                 .opacity(landingAppeared ? 1 : 0)
                 .offset(y: landingAppeared ? 0 : 24)
 
-                // Integration badges
-                HStack(spacing: 8) {
-                    integrationBadge("HealthKit", icon: "heart.fill", color: .pink)
-                    integrationBadge("Plaid", icon: "building.columns.fill", color: Color.kalDone)
-                    integrationBadge("AI Insights", icon: "brain.head.profile", color: Color.kalToday)
-                }
-                .opacity(landingAppeared ? 1 : 0)
-                .offset(y: landingAppeared ? 0 : 18)
-
-                // Tagline
-                Text("Track wellness · Manage finances · Build habits")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.kalTertiary)
-                    .opacity(landingAppeared ? 1 : 0)
-                    .offset(y: landingAppeared ? 0 : 14)
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 36)
 
-            // ── Slide button ──
-            SlideToLoginButton(isDark: isDark) {
-                _Concurrency.Task { await attemptPasskeyThenLogin() }
+            // ── Slide button / loading overlay ──
+            if isAuthenticatingPasskey {
+                VStack(spacing: 14) {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(Color.kalPrimary)
+                    Text("Authenticating...")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(height: 64)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 44)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            } else {
+                SlideToLoginButton(isDark: isDark) {
+                    _Concurrency.Task { await attemptPasskeyThenLogin() }
+                }
+                .opacity(landingAppeared ? 1 : 0)
+                .offset(y: landingAppeared ? 0 : 12)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 44)
+                .transition(.opacity)
             }
-            .opacity(landingAppeared ? 1 : 0)
-            .offset(y: landingAppeared ? 0 : 12)
-            .padding(.horizontal, 28)
-            .padding(.bottom, 44)
         }
         .onAppear {
             withAnimation(.spring(duration: 0.75, bounce: 0.12).delay(0.25)) {
                 landingAppeared = true
             }
+            // Pre-fetch passkey challenge so slide-to-login is instant
+            _Concurrency.Task { await interactor.prefetchPasskeyChallenge() }
         }
         .onDisappear { landingAppeared = false }
         .transition(.opacity)
@@ -619,40 +602,43 @@ struct LandingView: View {
                     // Spacer to push content below the wave
                     Color.clear.frame(height: waveSpacerHeight)
 
-                    // Title
-                    Text(formTitle)
-                        .font(.system(size: 26, weight: .bold))
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 20)
+                    // Flat layout — no card, fields sit directly on the page background
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Title
+                        Text(formTitle)
+                            .font(.system(size: 28, weight: .bold))
+                            .padding(.horizontal, 28)
 
-                    // Alerts
-                    alertBanners
-                        .padding(.horizontal, 28)
+                        // Alerts
+                        alertBanners
+                            .padding(.horizontal, 28)
 
-                    // Form card
-                    VStack(alignment: .leading, spacing: 16) {
-                        formFields
+                        // Fields
+                        VStack(alignment: .leading, spacing: 14) {
+                            formFields
+                        }
+                        .padding(.horizontal, 22)
 
                         if screen == .login {
                             loginExtras
+                                .padding(.horizontal, 22)
                         }
 
                         submitButton
-                            .padding(.top, 6)
+                            .padding(.horizontal, 22)
 
                         if screen == .login {
                             passkeyDivider
+                                .padding(.horizontal, 22)
                             passkeyLoginButton
+                                .padding(.horizontal, 22)
                         }
                     }
-                    .padding(18)
-                    .background(glassCardBackground)
-                    .padding(.horizontal, 22)
 
                     // Switch link
                     formLink
-                        .padding(.top, 18)
-                        .padding(.bottom, 28)
+                        .padding(.top, 24)
+                        .padding(.bottom, 36)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -868,21 +854,16 @@ struct LandingView: View {
             ZStack {
                 Text(submitTitle)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isDark ? .black : .white)
                     .opacity(isLoading ? 0 : 1)
-                if isLoading { ProgressView().tint(.white) }
+                if isLoading { ProgressView().tint(isDark ? .black : .white) }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 42)
+            .frame(height: 46)
             .background(
                 Capsule(style: .continuous)
-                    .fill(buttonGold)
+                    .fill(isDark ? Color.white : Color.black)
             )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color.white.opacity(isDark ? 0.18 : 0.38), lineWidth: 1)
-            )
-            .shadow(color: buttonGold.opacity(isDark ? 0.32 : 0.24), radius: 8, y: 3)
         }
         .disabled(isLoading)
         .scaleEffect(isLoading ? 0.98 : 1)
@@ -973,7 +954,7 @@ struct LandingView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Underline Input Components
+    // MARK: - Form Field Components
 
     private func underlineField(
         _ label: String,
@@ -987,21 +968,18 @@ struct LandingView: View {
         onSubmit: (() -> Void)? = nil
     ) -> some View {
         let isFocused = focusedField == focus
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(isFocused ? accent : .primary)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(isFocused ? Color.primary.opacity(0.85) : Color.secondary.opacity(0.55))
                 .animation(.easeInOut(duration: 0.15), value: isFocused)
-
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.callout)
-                    .foregroundStyle(isFocused ? accent : fieldIconColor)
-                    .frame(width: 18)
-                    .animation(.easeInOut(duration: 0.15), value: isFocused)
-
-                TextField(label.lowercased(), text: text)
-                    .font(.body)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(fieldIconColor)
+                    .frame(width: 20)
+                TextField(label, text: text)
+                    .font(.system(size: 15))
                     .keyboardType(keyboard)
                     .textContentType(content)
                     .textInputAutocapitalization(capitalize ? .words : .never)
@@ -1009,19 +987,22 @@ struct LandingView: View {
                     .focused($focusedField, equals: focus)
                     .submitLabel(submitLabel)
                     .onSubmit { onSubmit?() }
+                    .foregroundStyle(.primary)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
             .frame(height: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.thinMaterial)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.03))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(isFocused ? accent.opacity(0.75) : separatorColor, lineWidth: isFocused ? 1.4 : 1)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                isFocused ? Color.primary.opacity(isDark ? 0.50 : 0.35) : separatorColor,
+                                lineWidth: 1
+                            )
                     }
-            )
-            .shadow(color: .black.opacity(isDark ? 0.10 : 0.04), radius: 4, y: 2)
-
+                    .animation(.easeInOut(duration: 0.15), value: isFocused)
+            }
         }
     }
 
@@ -1036,60 +1017,59 @@ struct LandingView: View {
         onSubmit: (() -> Void)? = nil
     ) -> some View {
         let isFocused = focusedField == focus
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(isFocused ? accent : .primary)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(isFocused ? Color.primary.opacity(0.85) : Color.secondary.opacity(0.55))
                 .animation(.easeInOut(duration: 0.15), value: isFocused)
-
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.callout)
-                    .foregroundStyle(isFocused ? accent : fieldIconColor)
-                    .frame(width: 18)
-                    .animation(.easeInOut(duration: 0.15), value: isFocused)
-
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(fieldIconColor)
+                    .frame(width: 20)
                 Group {
                     if isVisible.wrappedValue {
-                        TextField(label.lowercased(), text: text)
+                        TextField(label, text: text)
                     } else {
-                        SecureField(label.lowercased(), text: text)
+                        SecureField(label, text: text)
                     }
                 }
-                .font(.body)
+                .font(.system(size: 15))
                 .textContentType(content)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .focused($focusedField, equals: focus)
                 .submitLabel(submitLabel)
                 .onSubmit { onSubmit?() }
-
+                .foregroundStyle(.primary)
                 Button {
                     let wasFocused = focusedField == focus
                     isVisible.wrappedValue.toggle()
                     if wasFocused {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            focusedField = focus
-                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = focus }
                     }
                 } label: {
                     Image(systemName: isVisible.wrappedValue ? "eye.slash" : "eye")
-                        .font(.subheadline)
-                        .foregroundStyle(isFocused ? accent : fieldIconColor)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(fieldIconColor)
+                        .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
             .frame(height: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.thinMaterial)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.03))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(isFocused ? accent.opacity(0.75) : separatorColor, lineWidth: isFocused ? 1.4 : 1)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                isFocused ? Color.primary.opacity(isDark ? 0.50 : 0.35) : separatorColor,
+                                lineWidth: 1
+                            )
                     }
-            )
-            .shadow(color: .black.opacity(isDark ? 0.10 : 0.04), radius: 4, y: 2)
+                    .animation(.easeInOut(duration: 0.15), value: isFocused)
+            }
         }
     }
 
@@ -1147,10 +1127,25 @@ struct LandingView: View {
     }
 
     private func attemptPasskeyThenLogin() async {
-        // Try passkey login automatically; fall through to password form on failure
-        isLoading = true
-        let result = await interactor.loginWithPasskey()
-        isLoading = false
+        // Show spinner on the landing screen
+        withAnimation(.easeInOut(duration: 0.25)) {
+            isAuthenticatingPasskey = true
+        }
+
+        let trustedDeviceResult = await interactor.loginWithTrustedDevice()
+        if trustedDeviceResult.success {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isAuthenticatingPasskey = false
+            }
+            promptForQuickUnlockIfNeeded()
+            return
+        }
+
+        let result = await interactor.loginWithCachedPasskey()
+
+        withAnimation(.easeInOut(duration: 0.25)) {
+            isAuthenticatingPasskey = false
+        }
 
         if result.success {
             promptForQuickUnlockIfNeeded()

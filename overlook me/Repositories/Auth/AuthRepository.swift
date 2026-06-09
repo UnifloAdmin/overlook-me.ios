@@ -4,12 +4,15 @@ import Foundation
 
 /// Protocol defining authentication operations
 protocol AuthRepository {
-    func loginWithEmail(email: String, password: String) async throws -> CAMAAuthResponse
-    func register(email: String, password: String, confirmPassword: String, firstName: String, lastName: String) async throws -> CAMAAuthResponse
-    func verifyTwoFactor(userId: String, code: String) async throws -> CAMAAuthResponse
+    func loginWithEmail(email: String, password: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse
+    func register(email: String, password: String, confirmPassword: String, firstName: String, lastName: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse
+    func verifyTwoFactor(userId: String, code: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse
     func forgotPassword(email: String) async throws
-    func refreshToken(accessToken: String, refreshToken: String) async throws -> CAMAAuthResponse
+    func refreshToken(accessToken: String, refreshToken: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse
     func logout(accessToken: String) async throws
+    func validateDeviceTrust(token: String, fingerprint: String, deviceInfo: DeviceInfoPayload) async throws -> CAMAAuthResponse
+    func revokeDeviceTrust(id: String, accessToken: String) async throws
+    func listTrustedDevices(accessToken: String) async throws -> [TrustedDevice]
     func getEmailStatus(accessToken: String) async throws -> EmailStatusResponse
     func getTwoFactorStatus(accessToken: String) async throws -> TwoFactorStatusResponse
     func resendVerificationEmail(accessToken: String) async throws
@@ -22,7 +25,7 @@ protocol AuthRepository {
     // Passkey
     func checkPasskeys(email: String) async throws -> Bool
     func beginPasskeyLogin() async throws -> PasskeyBeginResponse
-    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any]) async throws -> CAMAAuthResponse
+    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any], deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse
     func beginPasskeyRegistration(accessToken: String) async throws -> PasskeyBeginResponse
     func completePasskeyRegistration(accessToken: String, challengeId: String, attestationResponse: [String: Any], deviceName: String) async throws
     func listPasskeys(accessToken: String) async throws -> [PasskeyCredential]
@@ -33,24 +36,27 @@ protocol AuthRepository {
 
 struct RealAuthRepository: AuthRepository {
     
-    func loginWithEmail(email: String, password: String) async throws -> CAMAAuthResponse {
-        let body: [String: Any] = ["email": email, "password": password]
+    func loginWithEmail(email: String, password: String, deviceInfo: DeviceInfoPayload? = nil) async throws -> CAMAAuthResponse {
+        var body: [String: Any] = ["email": email, "password": password]
+        addDeviceInfo(deviceInfo, to: &body)
         return try await postJSON(url: CAMAConfig.loginURL, body: body)
     }
     
-    func register(email: String, password: String, confirmPassword: String, firstName: String, lastName: String) async throws -> CAMAAuthResponse {
-        let body: [String: Any] = [
+    func register(email: String, password: String, confirmPassword: String, firstName: String, lastName: String, deviceInfo: DeviceInfoPayload? = nil) async throws -> CAMAAuthResponse {
+        var body: [String: Any] = [
             "email": email,
             "password": password,
             "confirmPassword": confirmPassword,
             "firstName": firstName,
             "lastName": lastName
         ]
+        addDeviceInfo(deviceInfo, to: &body)
         return try await postJSON(url: CAMAConfig.registerURL, body: body)
     }
     
-    func verifyTwoFactor(userId: String, code: String) async throws -> CAMAAuthResponse {
-        let body: [String: Any] = ["userId": userId, "code": code]
+    func verifyTwoFactor(userId: String, code: String, deviceInfo: DeviceInfoPayload? = nil) async throws -> CAMAAuthResponse {
+        var body: [String: Any] = ["userId": userId, "code": code]
+        addDeviceInfo(deviceInfo, to: &body)
         return try await postJSON(url: CAMAConfig.twoFactorVerifyLoginURL, body: body)
     }
     
@@ -69,9 +75,27 @@ struct RealAuthRepository: AuthRepository {
         }
     }
     
-    func refreshToken(accessToken: String, refreshToken: String) async throws -> CAMAAuthResponse {
-        let body: [String: Any] = ["accessToken": accessToken, "refreshToken": refreshToken]
+    func refreshToken(accessToken: String, refreshToken: String, deviceInfo: DeviceInfoPayload? = nil) async throws -> CAMAAuthResponse {
+        var body: [String: Any] = ["accessToken": accessToken, "refreshToken": refreshToken]
+        addDeviceInfo(deviceInfo, to: &body)
         return try await postJSON(url: CAMAConfig.refreshTokenURL, body: body)
+    }
+
+    func validateDeviceTrust(token: String, fingerprint: String, deviceInfo: DeviceInfoPayload) async throws -> CAMAAuthResponse {
+        var body: [String: Any] = [
+            "deviceTrustToken": token,
+            "deviceFingerprint": fingerprint
+        ]
+        addDeviceInfo(deviceInfo, to: &body)
+        return try await postJSON(url: CAMAConfig.deviceTrustValidateURL, body: body)
+    }
+
+    func revokeDeviceTrust(id: String, accessToken: String) async throws {
+        try await postEmpty(url: CAMAConfig.deviceTrustRevokeURL(id: id), accessToken: accessToken)
+    }
+
+    func listTrustedDevices(accessToken: String) async throws -> [TrustedDevice] {
+        try await getJSON(url: CAMAConfig.deviceTrustListURL, accessToken: accessToken)
     }
     
     func logout(accessToken: String) async throws {
@@ -135,11 +159,12 @@ struct RealAuthRepository: AuthRepository {
         try await postJSON(url: CAMAConfig.passwordlessBeginURL, body: [:])
     }
 
-    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any]) async throws -> CAMAAuthResponse {
-        let body: [String: Any] = [
+    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any], deviceInfo: DeviceInfoPayload? = nil) async throws -> CAMAAuthResponse {
+        var body: [String: Any] = [
             "challengeId": challengeId,
             "assertionResponse": assertionResponse
         ]
+        addDeviceInfo(deviceInfo, to: &body)
         return try await postJSON(url: CAMAConfig.passwordlessCompleteURL, body: body)
     }
 
@@ -165,6 +190,13 @@ struct RealAuthRepository: AuthRepository {
     }
 
     // MARK: - Helpers
+
+    private func addDeviceInfo(_ deviceInfo: DeviceInfoPayload?, to body: inout [String: Any]) {
+        guard let deviceInfo else { return }
+        for (key, value) in deviceInfo.bodyFields {
+            body[key] = value
+        }
+    }
 
     private func postEmpty(url: String, accessToken: String) async throws {
         let requestURL = URL(string: url)!
@@ -248,6 +280,7 @@ struct RealAuthRepository: AuthRepository {
 struct CAMAAuthResponse: Codable {
     let accessToken: String?
     let refreshToken: String?
+    let deviceTrustToken: String?
     let expiresAt: String?
     let userId: String?
     let email: String?
@@ -306,6 +339,20 @@ struct AuthenticatorDevice: Codable, Identifiable {
     let isActive: Bool?
 }
 
+struct TrustedDevice: Codable, Identifiable {
+    let id: String
+    let deviceName: String?
+    let deviceModel: String?
+    let osVersion: String?
+    let appVersion: String?
+    let lastIpAddress: String?
+    let lastGeoLocation: String?
+    let createdAt: String?
+    let expiresAt: String?
+    let lastUsedAt: String?
+    let isRevoked: Bool?
+}
+
 // MARK: - Passkey Models
 
 struct CheckPasskeysResponse: Codable {
@@ -358,6 +405,15 @@ struct PasskeyCredential: Codable, Identifiable {
     let lastUsedAt: String?
 }
 
+// MARK: - Passkey Challenge Cache
+
+@MainActor
+final class PasskeyChallengeCache {
+    static let shared = PasskeyChallengeCache()
+    var prefetchTask: _Concurrency.Task<PasskeyBeginResponse, Swift.Error>?
+    private init() {}
+}
+
 // MARK: - Auth Errors
 
 enum AuthError: LocalizedError {
@@ -392,25 +448,30 @@ enum AuthError: LocalizedError {
 // MARK: - Stub Implementation
 
 struct StubAuthRepository: AuthRepository {
-    func loginWithEmail(email: String, password: String) async throws -> CAMAAuthResponse {
-        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", expiresAt: nil, userId: "stub_id", email: email, firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
+    func loginWithEmail(email: String, password: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", deviceTrustToken: "stub_trust", expiresAt: nil, userId: "stub_id", email: email, firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
     }
     
-    func register(email: String, password: String, confirmPassword: String, firstName: String, lastName: String) async throws -> CAMAAuthResponse {
-        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", expiresAt: nil, userId: "stub_id", email: email, firstName: firstName, lastName: lastName, sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: false)
+    func register(email: String, password: String, confirmPassword: String, firstName: String, lastName: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", deviceTrustToken: "stub_trust", expiresAt: nil, userId: "stub_id", email: email, firstName: firstName, lastName: lastName, sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: false)
     }
     
-    func verifyTwoFactor(userId: String, code: String) async throws -> CAMAAuthResponse {
-        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", expiresAt: nil, userId: userId, email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
+    func verifyTwoFactor(userId: String, code: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", deviceTrustToken: "stub_trust", expiresAt: nil, userId: userId, email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
     }
     
     func forgotPassword(email: String) async throws {}
     
-    func refreshToken(accessToken: String, refreshToken: String) async throws -> CAMAAuthResponse {
-        CAMAAuthResponse(accessToken: "stub_new", refreshToken: "stub_new", expiresAt: nil, userId: "stub_id", email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
+    func refreshToken(accessToken: String, refreshToken: String, deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub_new", refreshToken: "stub_new", deviceTrustToken: nil, expiresAt: nil, userId: "stub_id", email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
     }
     
     func logout(accessToken: String) async throws {}
+    func validateDeviceTrust(token: String, fingerprint: String, deviceInfo: DeviceInfoPayload) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub_new", refreshToken: "stub_new", deviceTrustToken: nil, expiresAt: nil, userId: "stub_id", email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
+    }
+    func revokeDeviceTrust(id: String, accessToken: String) async throws {}
+    func listTrustedDevices(accessToken: String) async throws -> [TrustedDevice] { [] }
     func getEmailStatus(accessToken: String) async throws -> EmailStatusResponse { EmailStatusResponse(emailConfirmed: true) }
     func getTwoFactorStatus(accessToken: String) async throws -> TwoFactorStatusResponse { TwoFactorStatusResponse(twoFactorEnabled: true, enabledAt: "2026-01-15T10:00:00Z", recoveryCodesLeft: 8) }
     func resendVerificationEmail(accessToken: String) async throws {}
@@ -424,8 +485,8 @@ struct StubAuthRepository: AuthRepository {
     func beginPasskeyLogin() async throws -> PasskeyBeginResponse {
         PasskeyBeginResponse(challengeId: "stub", options: PasskeyOptionsJSON(challenge: "c3R1Yg", rpId: "localhost", rp: nil, user: nil, timeout: 60000, allowCredentials: nil))
     }
-    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any]) async throws -> CAMAAuthResponse {
-        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", expiresAt: nil, userId: "stub_id", email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
+    func completePasskeyLogin(challengeId: String, assertionResponse: [String: Any], deviceInfo: DeviceInfoPayload?) async throws -> CAMAAuthResponse {
+        CAMAAuthResponse(accessToken: "stub", refreshToken: "stub", deviceTrustToken: "stub_trust", expiresAt: nil, userId: "stub_id", email: "user@example.com", firstName: "Test", lastName: "User", sessionId: "stub_session", requiresTwoFactor: false, emailConfirmed: true)
     }
     func beginPasskeyRegistration(accessToken: String) async throws -> PasskeyBeginResponse {
         PasskeyBeginResponse(challengeId: "stub", options: PasskeyOptionsJSON(challenge: "c3R1Yg", rpId: "localhost", rp: nil, user: PasskeyOptionsJSON.PasskeyUser(id: "c3R1Yg", name: "user@example.com", displayName: "Test User"), timeout: 60000, allowCredentials: nil))

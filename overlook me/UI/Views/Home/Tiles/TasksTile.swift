@@ -11,9 +11,9 @@ struct TasksTile: View {
     var body: some View {
         Group {
             if service.state.isLoading {
-                shimmer("Tasks")
+                kalshiShimmer("Tasks")
             } else if service.state.failed {
-                errorState("Tasks") {
+                kalshiErrorState("Tasks") {
                     _Concurrency.Task { await service.refresh(userId: userId) }
                 }
             } else {
@@ -26,99 +26,90 @@ struct TasksTile: View {
         }
     }
 
+    /// Semantic accent: red if overdue, green otherwise.
     private var accentColor: Color {
-        service.state.overdueTasks > 0 ? .red : .green
+        service.state.overdueTasks > 0 ? Kalshi.red : Kalshi.green
     }
 
     private var card: some View {
         VStack(spacing: 0) {
             // Ring section
-            VStack(spacing: 10) {
+            VStack(spacing: Kalshi.cardGap) {
                 ZStack {
                     Circle()
-                        .stroke(Color(.systemFill), lineWidth: 6)
+                        .stroke(Kalshi.dividerBg, lineWidth: 5)
                     Circle()
                         .trim(from: 0, to: CGFloat(service.state.completionRate) / 100)
-                        .stroke(accentColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .stroke(accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                        .animation(.spring(response: 0.6, dampingFraction: 0.8), value: service.state.completionRate)
+                        .animation(Kalshi.normal, value: service.state.completionRate)
 
                     VStack(spacing: 0) {
                         Text("\(service.state.completionRate)%")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                        Text("done")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
+                            .kalshiMetric()
+                        Text("DONE")
+                            .kalshiMetricLabel()
                     }
                 }
-                .frame(width: 80, height: 80)
+                .frame(width: 76, height: 76)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.green)
-                    Text("Tasks")
-                        .font(.system(size: 13, weight: .semibold))
-                }
+                Text("Tasks")
+                    .kalshiCardTitle()
             }
-            .padding(.top, 20)
-            .padding(.bottom, 14)
+            .padding(.top, Kalshi.cardPadTop)
+            .padding(.bottom, 12)
 
-            Divider().padding(.horizontal, 14)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
 
             // Stats
-            VStack(spacing: 8) {
-                miniStat("calendar", .blue,
-                         "\(service.state.dueToday)", "Due today")
-                miniStat("calendar.badge.clock", .cyan,
-                         "\(service.state.dueThisWeek)", "This week")
+            VStack(spacing: 7) {
+                taskStat("calendar", Kalshi.blue,
+                         "\(service.state.dueToday)", "DUE TODAY")
+                taskStat("calendar.badge.clock", Kalshi.textSecondary,
+                         "\(service.state.dueThisWeek)", "THIS WEEK")
 
                 if service.state.overdueTasks > 0 {
-                    miniStat("clock.arrow.circlepath", .red,
-                             "\(service.state.overdueTasks)", "Overdue")
+                    taskStat("clock.arrow.circlepath", Kalshi.red,
+                             "\(service.state.overdueTasks)", "OVERDUE")
                 } else {
-                    miniStat("arrow.triangle.2.circlepath", .teal,
-                             "\(service.state.inProgress)", "In progress")
+                    taskStat("arrow.triangle.2.circlepath", Kalshi.textSecondary,
+                             "\(service.state.inProgress)", "IN PROGRESS")
                 }
 
-                miniStat("square.stack.fill", .purple,
-                         "\(service.state.totalTasks)", "Total")
+                taskStat("square.stack.fill", Kalshi.textSecondary,
+                         "\(service.state.totalTasks)", "TOTAL")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, Kalshi.cardPadH)
+            .padding(.vertical, 12)
 
-            Divider().padding(.horizontal, 14)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
 
             // Insight
             Text(service.state.headline)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+                .kalshiSecondary()
                 .lineLimit(3)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .kalshiCard()
     }
 
-    private func miniStat(_ icon: String, _ color: Color, _ value: String, _ label: String) -> some View {
-        HStack(spacing: 6) {
+    private func taskStat(_ icon: String, _ color: Color, _ value: String, _ label: String) -> some View {
+        HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(.system(size: 10))
                 .foregroundStyle(color)
-                .frame(width: 16)
+                .frame(width: 14)
             Text(value)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
+                .kalshiBody()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Spacer(minLength: 0)
             Text(label)
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+                .kalshiMetricLabel()
                 .lineLimit(1)
         }
     }
@@ -126,12 +117,12 @@ struct TasksTile: View {
 
 #Preview {
     ZStack {
-        Color(.systemGroupedBackground).ignoresSafeArea()
+        Kalshi.bg.ignoresSafeArea()
         HStack(alignment: .top, spacing: 12) {
             TasksTile()
             TasksTile()
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .environment(\.injected, .previewAuthenticated)
     }
 }

@@ -3,6 +3,7 @@ import Foundation
 struct URLSessionAPIClient: APIClient {
     let baseURL: URL
     let tokenProvider: (any AuthTokenProviding)?
+    let tokenRefresher: (any AuthTokenRefreshing)?
     let responseDecoder: ResponseDecoder
 
     let session: URLSession
@@ -12,6 +13,7 @@ struct URLSessionAPIClient: APIClient {
     init(
         baseURL: URL,
         tokenProvider: (any AuthTokenProviding)? = nil,
+        tokenRefresher: (any AuthTokenRefreshing)? = nil,
         responseDecoder: ResponseDecoder = ResponseDecoder(config: nil),
         session: URLSession = .shared,
         jsonEncoder: JSONEncoder = JSONEncoder(),
@@ -19,6 +21,7 @@ struct URLSessionAPIClient: APIClient {
     ) {
         self.baseURL = baseURL
         self.tokenProvider = tokenProvider
+        self.tokenRefresher = tokenRefresher
         self.responseDecoder = responseDecoder
         self.session = session
         self.jsonEncoder = jsonEncoder
@@ -41,6 +44,33 @@ struct URLSessionAPIClient: APIClient {
         query: [String: String?] = [:],
         headers: [String: String] = [:],
         body: (any Encodable)? = nil
+    ) async throws -> T {
+        // First attempt
+        do {
+            return try await executeRequest(method, path: path, query: query, headers: headers, body: body)
+        } catch APIError.httpStatus(let code, _) where code == 401 {
+            // ─── 401 auto-retry: silently refresh token and retry once ───
+            guard let refresher = tokenRefresher else { throw APIError.httpStatus(code, body: Data()) }
+
+            print("🔄 [APIClient] 401 on \(path) — attempting silent token refresh")
+            guard let newToken = await refresher.refreshAndReturnToken() else {
+                print("❌ [APIClient] Token refresh failed — propagating 401")
+                throw APIError.httpStatus(401, body: Data())
+            }
+
+            print("✅ [APIClient] Token refreshed — retrying \(path)")
+            return try await executeRequest(method, path: path, query: query, headers: headers, body: body)
+        }
+    }
+
+    // MARK: - Internal execute (no retry)
+
+    private func executeRequest<T: Decodable>(
+        _ method: HTTPMethod,
+        path: String,
+        query: [String: String?],
+        headers: [String: String],
+        body: (any Encodable)?
     ) async throws -> T {
         let url = try makeURL(path: path, query: query)
 

@@ -8,7 +8,7 @@ struct DailyHabitsAPI: Sendable {
     }
 }
 
-struct DailyHabitDTO: Codable, Sendable, Identifiable {
+struct DailyHabitDTO: Codable, Sendable, Identifiable, Equatable {
     let id: String
     let userId: String
     let oauthId: String?
@@ -127,7 +127,7 @@ struct LogHabitCompletionRequestDTO: Codable, Sendable {
     let generalNotes: String?
 }
 
-struct HabitCompletionLogDTO: Codable, Sendable {
+struct HabitCompletionLogDTO: Codable, Sendable, Equatable {
     let date: String
     let completed: Bool
     let value: Double?

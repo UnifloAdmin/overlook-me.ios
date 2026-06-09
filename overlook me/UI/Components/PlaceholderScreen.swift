@@ -2,23 +2,33 @@ import SwiftUI
 
 struct PlaceholderScreen: View {
     let title: String
-    var subtitle: String? = nil
-    
+
     var body: some View {
-        VStack(spacing: 10) {
-            Text(title)
-                .font(.title2.weight(.semibold))
-            
-            if let subtitle, !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(spacing: 20) {
+                Spacer().frame(height: 40)
+
+                Image(systemName: "hammer.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Kalshi.textMuted)
+
+                Text("Coming Soon")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(Kalshi.textPrimary)
+
+                Text("This feature is currently under development.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Kalshi.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+
+                Spacer().frame(height: 40)
             }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .scrollContentBackground(.hidden)
+        .background(Kalshi.bg)
         .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

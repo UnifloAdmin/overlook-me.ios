@@ -31,25 +31,7 @@ private enum K {
     static let cardGap: CGFloat = 10
 }
 
-// MARK: - Card Modifier
-
-private struct KalshiCard: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(K.cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: K.cardRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: K.cardRadius, style: .continuous)
-                    .stroke(K.cardBorder, lineWidth: 1)
-            )
-    }
-}
-
-private extension View {
-    func kalshiCard() -> some View {
-        modifier(KalshiCard())
-    }
-}
+// kalshiCard() is provided by KalshiHomeTokens.swift
 
 // MARK: - SleepView
 
@@ -61,57 +43,59 @@ struct SleepView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 14) {
-                if health.isLoading && health.lastUpdated == nil {
-                    loadingView
-                } else if health.sleepData.hours <= 0 && health.weeklySleep.isEmpty {
-                    emptyState
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 10)
-                } else {
-                    sleepScoreCard
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 10)
-
-                    lastNightCard
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 10)
-
-                    if hasSleepStages {
-                        sleepStagesCard
+            VStack(spacing: 0) {
+                VStack(spacing: 14) {
+                    if health.isLoading && health.lastUpdated == nil {
+                        loadingView
+                    } else if health.sleepData.hours <= 0 && health.weeklySleep.isEmpty {
+                        emptyState
                             .opacity(appeared ? 1 : 0)
                             .offset(y: appeared ? 0 : 10)
-                    }
-
-                    if !health.weeklySleep.isEmpty {
-                        weeklySleepChart
+                    } else {
+                        sleepScoreCard
                             .opacity(appeared ? 1 : 0)
                             .offset(y: appeared ? 0 : 10)
-                    }
 
-                    scheduleCard
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 10)
-
-                    consistencyCard
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 10)
-
-                    if !health.sleepInsights.isEmpty {
-                        insightsCard
+                        lastNightCard
                             .opacity(appeared ? 1 : 0)
                             .offset(y: appeared ? 0 : 10)
+
+                        if hasSleepStages {
+                            sleepStagesCard
+                                .opacity(appeared ? 1 : 0)
+                                .offset(y: appeared ? 0 : 10)
+                        }
+
+                        if !health.weeklySleep.isEmpty {
+                            weeklySleepChart
+                                .opacity(appeared ? 1 : 0)
+                                .offset(y: appeared ? 0 : 10)
+                        }
+
+                        scheduleCard
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 10)
+
+                        consistencyCard
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 10)
+
+                        if !health.sleepInsights.isEmpty {
+                            insightsCard
+                                .opacity(appeared ? 1 : 0)
+                                .offset(y: appeared ? 0 : 10)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 100)
+                .background(Color.white)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 100)
         }
         .scrollContentBackground(.hidden)
         .background(Color.white)
         .navigationTitle("Sleep")
-        .navigationBarTitleDisplayMode(.large)
         .task {
             guard !hasRequestedAuth else { return }
             hasRequestedAuth = true

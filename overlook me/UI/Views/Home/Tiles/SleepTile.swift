@@ -26,32 +26,28 @@ struct SleepTile: View {
 
     private var loadingCard: some View {
         HStack(spacing: 8) {
-            ProgressView().tint(.secondary).scaleEffect(0.85)
-            Text("Sleep")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            ProgressView().tint(Kalshi.textMuted).scaleEffect(0.85)
+            Text("SLEEP")
+                .kalshiEyebrow()
         }
         .frame(maxWidth: .infinity)
         .frame(height: 160)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .kalshiCard()
     }
 
     // MARK: - Empty
 
     private var emptyCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "moon.zzz")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 16))
+                .foregroundStyle(Kalshi.textMuted)
             Text("Wear your Apple Watch to bed to track sleep")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .kalshiSecondary()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(Kalshi.cardPadH)
+        .kalshiCard()
     }
 
     // MARK: - Main Card
@@ -59,32 +55,29 @@ struct SleepTile: View {
     private var sleepCard: some View {
         VStack(spacing: 0) {
             headerSection
-            Divider().padding(.horizontal, 16)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
             weeklyAverageSection
-            Divider().padding(.horizontal, 16)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
             comparisonSection
-            Divider().padding(.horizontal, 16)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
             insightBar
         }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .kalshiCard()
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
-        Label {
-            Text("Sleep")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-        } icon: {
+        HStack(spacing: 4) {
             Image(systemName: "moon.stars.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(.green)
+                .font(.system(size: 10))
+                .foregroundStyle(Kalshi.textMuted)
+            Text("SLEEP")
+                .kalshiEyebrow()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Kalshi.cardPadH)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Weekly Average (hero number)
@@ -93,73 +86,70 @@ struct SleepTile: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(formattedHours(weeklyAvg))
-                    .font(.system(size: 34, weight: .thin, design: .rounded))
-                    .foregroundStyle(.primary)
-                Text("weekly average")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .kalshiMetric()
+                Text("WEEKLY AVERAGE")
+                    .kalshiMetricLabel()
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 4) {
+            // Quality as a metric
+            VStack(alignment: .trailing, spacing: 2) {
                 Text("\(avgQuality)%")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(avgQuality >= 70 ? .green : .orange)
-                Text("quality")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 23, weight: .bold))
+                    .tracking(-0.92)
+                    .foregroundStyle(avgQuality >= 70 ? Kalshi.green : Kalshi.orange)
+                Text("QUALITY")
+                    .kalshiMetricLabel()
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Kalshi.cardPadH)
+        .padding(.vertical, Kalshi.cardPadTop)
     }
 
     // MARK: - Today vs Yesterday Comparison
 
     private var comparisonSection: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             comparisonBar(
-                label: "Yesterday",
+                label: "YESTERDAY",
                 hours: yesterdayHours,
-                color: .green.opacity(0.5)
+                color: Kalshi.green.opacity(0.4)
             )
             comparisonBar(
-                label: "Last night",
+                label: "LAST NIGHT",
                 hours: health.sleepData.hours,
-                color: .green
+                color: Kalshi.green
             )
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Kalshi.cardPadH)
+        .padding(.vertical, Kalshi.cardPadTop)
     }
 
     private func comparisonBar(label: String, hours: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                .kalshiMetricLabel()
 
-            HStack(spacing: 8) {
-                // Bar
+            HStack(spacing: 6) {
+                // Bar — flat fill, no gradient
                 let maxHours = max(health.sleepData.hours, yesterdayHours, 8)
                 let fraction = maxHours > 0 ? CGFloat(hours / maxHours) : 0
 
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Kalshi.segRadius, style: .continuous)
                     .fill(color)
-                    .frame(height: 24)
+                    .frame(height: 20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .scaleEffect(x: max(0.02, fraction), y: 1, anchor: .leading)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: fraction)
+                    .animation(Kalshi.normal, value: fraction)
 
                 Text(hours > 0 ? formattedHours(hours) : "--")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .frame(width: 48, alignment: .trailing)
+                    .kalshiBody()
+                    .frame(width: 44, alignment: .trailing)
             }
 
-            // Delta if both have data
-            if hours > 0 && label == "Last night" && yesterdayHours > 0 {
+            // Delta
+            if hours > 0 && label == "LAST NIGHT" && yesterdayHours > 0 {
                 let diff = hours - yesterdayHours
                 let diffMin = Int(abs(diff) * 60)
                 if diffMin >= 5 {
@@ -167,9 +157,10 @@ struct SleepTile: View {
                         Image(systemName: diff > 0 ? "arrow.up.right" : "arrow.down.right")
                             .font(.system(size: 9, weight: .bold))
                         Text("\(diffMin) min \(diff > 0 ? "more" : "less")")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.1)
                     }
-                    .foregroundStyle(diff > 0 ? .green : .orange)
+                    .foregroundStyle(diff > 0 ? Kalshi.green : Kalshi.orange)
                 }
             }
         }
@@ -180,12 +171,11 @@ struct SleepTile: View {
 
     private var insightBar: some View {
         Text(sleepInsight)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .kalshiSecondary()
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Kalshi.cardPadH)
+            .padding(.vertical, 10)
     }
 
     // MARK: - Computed
@@ -236,8 +226,8 @@ struct SleepTile: View {
 
 #Preview {
     ZStack {
-        Color(.systemGroupedBackground).ignoresSafeArea()
+        Kalshi.bg.ignoresSafeArea()
         SleepTile()
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
     }
 }

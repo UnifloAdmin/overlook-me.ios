@@ -12,11 +12,11 @@ enum APIConfiguration {
             print("[APIConfiguration] LOCAL - Using localhost: \(url.absoluteString)")
             return url
         case .staging:
-            let url = URL(string: "https://eyrie.overlookme.com/api")!
+            let url = URL(string: "https://luma.overlookme.com/api")!
             print("[APIConfiguration] STAGING - Using staging: \(url.absoluteString)")
             return url
         case .production:
-            let url = URL(string: "https://eyrie.overlookme.com/api")!
+            let url = URL(string: "https://luma.overlookme.com/api")!
             print("[APIConfiguration] PRODUCTION - Using production: \(url.absoluteString)")
             return url
         }

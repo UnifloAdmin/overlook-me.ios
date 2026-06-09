@@ -30,36 +30,32 @@ struct BillsTile: View {
 
     private var loadingCard: some View {
         HStack(spacing: 8) {
-            ProgressView().tint(.secondary).scaleEffect(0.85)
-            Text("Bills")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            ProgressView().tint(Kalshi.textMuted).scaleEffect(0.85)
+            Text("BILLS")
+                .kalshiEyebrow()
         }
         .frame(maxWidth: .infinity)
         .frame(height: 160)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .kalshiCard()
     }
 
     // MARK: - Error
 
     private var errorCard: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Kalshi.cardGap) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 18))
+                .foregroundStyle(Kalshi.textMuted)
             Text("Couldn't load bills")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .kalshiSecondary()
             Button("Retry") {
                 _Concurrency.Task { await service.refresh(userId: userId) }
             }
-            .font(.caption.bold())
+            .buttonStyle(KalshiPillButtonStyle(isPrimary: false))
         }
         .frame(maxWidth: .infinity)
         .frame(height: 160)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .kalshiCard()
     }
 
     // MARK: - Main Card
@@ -67,28 +63,25 @@ struct BillsTile: View {
     private var billsCard: some View {
         VStack(spacing: 0) {
             headerSection
-            Divider().padding(.horizontal, 16)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
             barChartSection
-            Divider().padding(.horizontal, 16)
+            KalshiDivider().padding(.horizontal, Kalshi.cardPadH)
             insightBar
         }
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .kalshiCard()
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Kalshi.cardGap) {
             HStack(alignment: .center) {
-                Label {
-                    Text("Bills & Subscriptions")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                } icon: {
+                HStack(spacing: 4) {
                     Image(systemName: "creditcard.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(accentColor)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Kalshi.textMuted)
+                    Text("BILLS & SUBSCRIPTIONS")
+                        .kalshiEyebrow()
                 }
 
                 Spacer()
@@ -96,75 +89,65 @@ struct BillsTile: View {
                 statusPill
             }
 
+            // Hero amount — Kalshi metric (23px bold)
             Text(formatCurrency(service.state.totalUpcoming))
-                .font(.system(size: 34, weight: .thin, design: .rounded))
-                .foregroundStyle(.primary)
+                .kalshiMetric()
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
 
-            Text("due in the next 4 weeks")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text("DUE IN THE NEXT 4 WEEKS")
+                .kalshiMetricLabel()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Kalshi.cardPadH)
+        .padding(.top, Kalshi.cardPadTop)
+        .padding(.bottom, Kalshi.cardPadBot)
     }
 
     private var statusPill: some View {
         Group {
             if service.state.overdueBills.count > 0 {
-                pill("\(service.state.overdueBills.count) overdue", systemImage: "exclamationmark.circle.fill", color: .red)
+                KalshiStatusBadge(text: "\(service.state.overdueBills.count) OVERDUE", variant: .fail)
             } else if service.state.dueSoonCount > 0 {
-                pill("\(service.state.dueSoonCount) due soon", systemImage: "clock.fill", color: .orange)
+                KalshiStatusBadge(text: "\(service.state.dueSoonCount) DUE SOON", variant: .pending)
             } else {
-                pill("All clear", systemImage: "checkmark.circle.fill", color: .green)
+                KalshiStatusBadge(text: "ALL CLEAR", variant: .done)
             }
         }
-    }
-
-    private func pill(_ text: String, systemImage: String, color: Color) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.12), in: Capsule())
     }
 
     // MARK: - Bar Chart
 
     private var barChartSection: some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: .bottom, spacing: Kalshi.cardGap) {
             ForEach(service.state.weekBuckets) { bucket in
                 BillsWeekBar(
                     bucket: bucket,
                     maxTotal: service.state.maxWeekTotal,
-                    accent: accentColor
+                    accent: semanticAccent
                 )
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Kalshi.cardPadH)
+        .padding(.vertical, Kalshi.cardPadTop)
     }
 
     // MARK: - Insight Bar
 
     private var insightBar: some View {
         Text(service.state.summaryHeadline)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .kalshiSecondary()
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Kalshi.cardPadH)
+            .padding(.vertical, 10)
     }
 
-    // MARK: - Accent
+    // MARK: - Accent — Semantic only
 
-    private var accentColor: Color {
-        if !service.state.overdueBills.isEmpty { return .red }
-        if service.state.dueSoonCount > 0 { return .orange }
-        return .blue
+    private var semanticAccent: Color {
+        if !service.state.overdueBills.isEmpty { return Kalshi.red }
+        if service.state.dueSoonCount > 0 { return Kalshi.amber }
+        return Kalshi.green
     }
 
     private func formatCurrency(_ value: Double) -> String {
@@ -176,14 +159,14 @@ struct BillsTile: View {
     }
 }
 
-// MARK: - Week Bar
+// MARK: - Week Bar (Kalshi flat, no gradient)
 
 private struct BillsWeekBar: View {
     let bucket: WeekBucket
     let maxTotal: Double
     let accent: Color
 
-    private static let barHeight: CGFloat = 56
+    private static let barHeight: CGFloat = 52
     private static let labelHeight: CGFloat = 14
     private static let amountHeight: CGFloat = 14
 
@@ -194,35 +177,31 @@ private struct BillsWeekBar: View {
 
     var body: some View {
         VStack(spacing: 3) {
-            // Amount above bar — fixed height so bars align from the bottom
+            // Amount above bar
             Text(bucket.count > 0 ? formatCurrency(bucket.total) : "")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary.opacity(0.7))
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(-0.09)
+                .foregroundStyle(Kalshi.textSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .frame(height: Self.amountHeight)
 
-            // Bar — grows from bottom, pinned via VStack + Spacer
+            // Bar — flat fill, no gradient
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(
-                        bucket.count > 0
-                            ? AnyShapeStyle(LinearGradient(
-                                colors: [accent, accent.opacity(0.55)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                              ))
-                            : AnyShapeStyle(Color(.systemFill))
-                    )
+                RoundedRectangle(cornerRadius: Kalshi.segRadius, style: .continuous)
+                    .fill(bucket.count > 0 ? accent : Kalshi.dividerBg)
                     .frame(height: max(4, Self.barHeight * (bucket.count > 0 ? fraction : 0.05)))
+                    .animation(Kalshi.normal, value: fraction)
             }
             .frame(height: Self.barHeight)
 
-            // Week label below bar — fixed height
+            // Week label
             Text(shortLabel(bucket.label))
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.secondary)
+                .tracking(0.4)
+                .textCase(.uppercase)
+                .foregroundStyle(Kalshi.textMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(height: Self.labelHeight)
@@ -253,9 +232,9 @@ private struct BillsWeekBar: View {
 
 #Preview {
     ZStack {
-        Color(.systemGroupedBackground).ignoresSafeArea()
+        Kalshi.bg.ignoresSafeArea()
         BillsTile()
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
             .environment(\.injected, .previewAuthenticated)
     }
 }

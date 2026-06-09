@@ -49,6 +49,20 @@ struct TabBarConfiguration: Equatable {
         messages: nil
     )
     
+    static let dSprints = TabBarConfiguration(
+        home: .init(title: "Journal", systemImage: "clock.badge.checkmark.fill"),
+        explore: .init(title: "History", systemImage: "clock.arrow.circlepath"),
+        alerts: nil,
+        messages: nil
+    )
+
+    static let budgets = TabBarConfiguration(
+        home: .init(title: "Budgets", systemImage: "wallet.pass.fill"),
+        explore: .init(title: "Today", systemImage: "calendar"),
+        alerts: nil,
+        messages: nil
+    )
+
     static let bankAccounts = TabBarConfiguration(
         home: .init(title: "Accounts", systemImage: "building.columns.fill"),
         explore: .init(title: "Trends", systemImage: "chart.line.uptrend.xyaxis"),
@@ -81,6 +95,13 @@ struct TabBarConfiguration: Equatable {
         home: .init(title: "Fitness", systemImage: "figure.run"),
         explore: .init(title: "Trends", systemImage: "chart.bar.xaxis"),
         alerts: nil,
+        messages: nil
+    )
+    
+    static let quitVape = TabBarConfiguration(
+        home: .init(title: "Log", systemImage: "plus.circle"),
+        explore: .init(title: "Progress", systemImage: "chart.bar.xaxis"),
+        alerts: .init(title: "Health", systemImage: "heart.circle"),
         messages: nil
     )
 }

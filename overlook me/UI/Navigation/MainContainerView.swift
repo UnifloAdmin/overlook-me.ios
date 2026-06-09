@@ -10,37 +10,36 @@ import SwiftUI
 struct MainContainerView: View {
     @StateObject private var tabBar = TabBarStyleStore()
     @State private var selection: AppTab = .home
-    @State private var previousTab: AppTab = .home
-    @State private var searchText = ""
-    
+    @State private var isMenuPresented = false
+
     // Keep navigation *inside* tabs so the tab bar stays visible.
     @State private var homePath = NavigationPath()
-    
+
     // Shared ViewModel for Transactions tabs
     @State private var transactionsViewModel = TransactionsViewModel()
-    
+
     // Track which health sub-route is active
     @State private var activeHealthRoute: SideNavRoute = .healthFitness
-    
+
     var body: some View {
         TabView(selection: $selection) {
             Tab(tabBar.config.home.title, systemImage: tabBar.config.home.systemImage, value: .home) {
                 homeTabContent()
                     .environmentObject(tabBar)
             }
-            
+
             Tab(tabBar.config.explore.title, systemImage: tabBar.config.explore.systemImage, value: .explore) {
                 exploreTabContent()
                     .environmentObject(tabBar)
             }
-            
+
             if let alerts = tabBar.config.alerts {
                 Tab(alerts.title, systemImage: alerts.systemImage, value: .notifications) {
                     alertsTabContent()
                         .environmentObject(tabBar)
                 }
             }
-            
+
             if let messages = tabBar.config.messages {
                 Tab(messages.title, systemImage: messages.systemImage, value: .messages) {
                     messagesTabContent()
@@ -57,27 +56,27 @@ struct MainContainerView: View {
                         .accessibilityHidden(true)
                 }
             }
-            
-            // Native “separate” trailing button, like Apple News.
-            // We use the system role so iOS renders it as the detached pill/button.
-            Tab(value: .searchProxy, role: .search) {
-                SideNavigationView(
-                    isPresented: .constant(true),
-                    searchText: $searchText,
-                    onSelectRoute: { route in
-                        selection = previousTab
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            open(route)
-                        }
-                    }
-                )
-                .searchable(text: $searchText, placement: .automatic, prompt: "Search sections")
+
+            Tab("Menu", systemImage: "line.3.horizontal", value: AppTab.menu) {
+                Color.clear
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
         .tabBarMinimizeBehavior(.never)
+        .sheet(isPresented: $isMenuPresented) {
+            SideNavigationView(onSelectRoute: { route in
+                isMenuPresented = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    open(route)
+                }
+            })
+        }
         .onChange(of: selection) { oldValue, newValue in
-            if newValue != .searchProxy {
-                previousTab = newValue
+            if newValue == .menu {
+                isMenuPresented = true
+                selection = oldValue
+                return
             }
             if tabBar.config.messages == nil && newValue == .messages {
                 selection = oldValue
@@ -87,7 +86,6 @@ struct MainContainerView: View {
             }
         }
         .onChange(of: homePath) { _, newPath in
-            // Reset tab bar config when user pops all the way back to the landing screen
             if newPath.isEmpty && tabBar.config != .dailyHabits && tabBar.config != .tasks {
                 tabBar.config = .default
             }
@@ -95,11 +93,13 @@ struct MainContainerView: View {
         .onChange(of: tabBar.config) { oldValue, newValue in
             guard oldValue != newValue else { return }
             if newValue == .dailyHabits || newValue == .tasks || newValue == .health ||
-               newValue == .bankAccounts || newValue == .transactions || newValue == .notifications {
+               newValue == .budgets || newValue == .bankAccounts || newValue == .transactions ||
+               newValue == .notifications || newValue == .dSprints {
                 homePath = NavigationPath()
             }
             if (oldValue == .dailyHabits || oldValue == .tasks || oldValue == .health ||
-                oldValue == .bankAccounts || oldValue == .transactions || oldValue == .notifications)
+                oldValue == .budgets || oldValue == .bankAccounts || oldValue == .transactions ||
+                oldValue == .notifications || oldValue == .quitVape || oldValue == .dSprints)
                 && newValue != oldValue {
                 homePath = NavigationPath()
                 selection = .home
@@ -109,7 +109,7 @@ struct MainContainerView: View {
             }
         }
     }
-    
+
     private func open(_ route: SideNavRoute) {
         switch route {
         case .dailyHabits:
@@ -123,12 +123,17 @@ struct MainContainerView: View {
              .healthRespiration, .healthFitness, .healthExercise:
             activeHealthRoute = route
             if tabBar.config == .health {
-                // Already in health mode — just reset the path to refresh the view
                 homePath = NavigationPath()
                 selection = .home
             } else {
                 switchMode(to: .health)
             }
+        case .quitVape:
+            switchMode(to: .quitVape)
+        case .dSprints:
+            switchMode(to: .dSprints)
+        case .budgets:
+            switchMode(to: .budgets)
         case .bankAccounts:
             switchMode(to: .bankAccounts)
         case .transactions:
@@ -162,10 +167,20 @@ struct MainContainerView: View {
             self.homePath.append(route)
         }
     }
-    
+
     @ViewBuilder
     func homeTabContent() -> some View {
-        if tabBar.config == .bankAccounts {
+        if tabBar.config == .dSprints {
+            NavigationStack {
+                DSprintsView()
+                    .tabBarConfig(.dSprints)
+            }
+        } else if tabBar.config == .budgets {
+            NavigationStack {
+                BudgetsView()
+                    .tabBarConfig(.budgets)
+            }
+        } else if tabBar.config == .bankAccounts {
             NavigationStack {
                 BankAccountsView()
                     .tabBarConfig(.bankAccounts)
@@ -184,11 +199,16 @@ struct MainContainerView: View {
                 healthViewForRoute(activeHealthRoute)
                     .tabBarConfig(.health)
             }
+        } else if tabBar.config == .quitVape {
+            NavigationStack {
+                QuitVapeView(activeTab: .log)
+                    .tabBarConfig(.quitVape)
+            }
         } else {
             HomeView(path: $homePath)
         }
     }
-    
+
     @ViewBuilder
     func healthViewForRoute(_ route: SideNavRoute) -> some View {
         switch route {
@@ -204,14 +224,21 @@ struct MainContainerView: View {
             ExerciseView()
         case .healthInsights:
             HealthInsightsView()
+        case .quitVape:
+            QuitVapeView()
         default:
             FitnessView()
         }
     }
-    
+
     @ViewBuilder
     func exploreTabContent() -> some View {
-        if tabBar.config == .dailyHabits {
+        if tabBar.config == .dSprints {
+            NavigationStack {
+                DSprintsHistoryView()
+                    .tabBarConfig(.dSprints)
+            }
+        } else if tabBar.config == .dailyHabits {
             NavigationStack {
                 ChallengesTabView()
                     .tabBarConfig(.dailyHabits)
@@ -243,6 +270,11 @@ struct MainContainerView: View {
                     .navigationTitle("Trends")
                     .tabBarConfig(.health)
             }
+        } else if tabBar.config == .quitVape {
+            NavigationStack {
+                QuitVapeView(activeTab: .progress)
+                    .tabBarConfig(.quitVape)
+            }
         } else {
             NavigationStack {
                 TodayPlaceholderView()
@@ -250,7 +282,7 @@ struct MainContainerView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     func alertsTabContent() -> some View {
         if tabBar.config == .dailyHabits {
@@ -275,6 +307,11 @@ struct MainContainerView: View {
                     .navigationTitle("Trends")
                     .tabBarConfig(.health)
             }
+        } else if tabBar.config == .quitVape {
+            NavigationStack {
+                QuitVapeView(activeTab: .health)
+                    .tabBarConfig(.quitVape)
+            }
         } else {
             NavigationStack {
                 HealthInsightsView()
@@ -282,7 +319,7 @@ struct MainContainerView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     func messagesTabContent() -> some View {
         if tabBar.config == .dailyHabits {
@@ -310,27 +347,24 @@ private enum AppTab: Hashable {
     case explore
     case notifications
     case messages
-    /// Proxy selection that maps to the native `.search` role tab.
-    case searchProxy
+    case menu
 }
 
 // MARK: - Today Placeholder
 
 private struct TodayPlaceholderView: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             Image(systemName: "calendar")
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(Kalshi.textMuted)
             Text("Today")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.primary)
+                .kalshiCardTitle()
             Text("Your daily overview is coming soon.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .kalshiSecondary()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Kalshi.bg)
     }
 }
 

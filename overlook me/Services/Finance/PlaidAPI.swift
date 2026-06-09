@@ -17,7 +17,10 @@ struct ConnectedAccountDTO: Codable, Sendable, Identifiable {
     let institutionName: String
     let connectedAt: String
     let lastSyncedAt: String?
+    let lastBalanceRefreshedAt: String?
+    let nextBalanceRefreshAt: String?
     let isActive: Bool
+    let requiresReauthentication: Bool?
     let errorMessage: String?
     let totalBalance: Double
     let accounts: [SubAccountDTO]?

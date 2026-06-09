@@ -18,6 +18,8 @@ enum KeychainHelper {
         case idToken = "id_token"
         case userData = "user_data"
         case sessionId = "session_id"
+        case deviceTrustToken = "device_trust_token"
+        case deviceFingerprint = "device_fingerprint"
     }
     
     // MARK: - Save
@@ -45,6 +47,43 @@ enum KeychainHelper {
             throw KeychainError.invalidData
         }
         try save(data, for: key)
+    }
+
+    static func saveBiometricProtected(_ string: String, for key: Key) throws {
+        guard let data = string.data(using: .utf8) else {
+            throw KeychainError.invalidData
+        }
+
+        var error: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .biometryCurrentSet,
+            &error
+        ) else {
+            throw KeychainError.saveFailed(errSecParam)
+        }
+
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key.rawValue
+        ]
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key.rawValue,
+            kSecAttrAccessControl as String: accessControl,
+            kSecValueData as String: data
+        ]
+
+        SecItemDelete(deleteQuery as CFDictionary)
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainError.saveFailed(status)
+        }
     }
     
     // MARK: - Retrieve
@@ -74,6 +113,31 @@ enum KeychainHelper {
         guard let string = String(data: data, encoding: .utf8) else {
             throw KeychainError.invalidData
         }
+        return string
+    }
+
+    static func retrieveBiometricProtectedString(for key: Key, prompt: String) throws -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key.rawValue,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseOperationPrompt as String: prompt
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data else {
+            throw KeychainError.retrieveFailed(status)
+        }
+
+        guard let string = String(data: data, encoding: .utf8) else {
+            throw KeychainError.invalidData
+        }
+
         return string
     }
     

@@ -112,29 +112,29 @@ struct TaskDashboard: View {
             TasksKalshiStyle.pageBackground.ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
-                    analyticsCard
-                        .padding(.horizontal, 16)
-                    
-                    filterPillsSection
-                    
-                    tasksContent
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        analyticsCard
+                            .padding(.horizontal, 16)
+                        
+                        filterPillsSection
+                        
+                        tasksContent
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 20)
+                    .padding(.bottom, 48)
+                    .background(TasksKalshiStyle.pageBackground)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 16)
-                .padding(.bottom, 48)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .refreshable { await loadTasks() }
         }
         .navigationTitle("Tasks")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button { isPresentingAddTask = true } label: {
                     Image(systemName: "plus")
-                        .font(.title3.weight(.semibold))
                 }
             }
         }

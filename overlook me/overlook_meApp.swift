@@ -14,6 +14,9 @@ struct overlook_meApp: App {
     private let environment: AppEnvironment
     
     init() {
+        #if DEBUG
+        Bundle(path: "/Applications/InjectionIII.app/Contents/Resources/iOSInjection.bundle")?.load()
+        #endif
         APIConfiguration.printConfiguration()
         self.environment = Self.bootstrap()
     }

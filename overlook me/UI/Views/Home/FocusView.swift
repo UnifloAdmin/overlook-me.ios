@@ -2,22 +2,31 @@ import SwiftUI
 
 struct FocusView: View {
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Image(systemName: "list.bullet.rectangle")
-                .font(.system(size: 64))
-                .foregroundColor(.blue)
-            
+                .font(.system(size: 44))
+                .foregroundStyle(Kalshi.textMuted)
+
             Text("Focus")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-            
+                .font(.system(size: 20, weight: .semibold))
+                .tracking(-0.28)
+                .foregroundStyle(Kalshi.textPrimary)
+
             Text("Track tasks and stay on top of your priorities.")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Kalshi.textSecondary)
                 .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
+                .lineSpacing(4)
                 .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .padding(32)
+        .background(Kalshi.bg)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color(red: 0.820, green: 0.835, blue: 0.855), lineWidth: 1) // #d1d5db
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .navigationTitle("Focus")
     }
 }

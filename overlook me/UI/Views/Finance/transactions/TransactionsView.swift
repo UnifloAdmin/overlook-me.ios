@@ -7,71 +7,61 @@ struct TransactionsView: View {
     @SwiftUI.Environment(\.injected) private var container: DIContainer
     @Bindable var viewModel: TransactionsViewModel
     let tab: TransactionTab
-    
+
     private var userId: String {
         container.appState.state.auth.user?.id ?? ""
     }
-    
+
     var body: some View {
-        Group {
-            switch tab {
-            case .analytics:
-                TransactionsAnalyticsView(viewModel: viewModel)
-            case .ledger:
-                TransactionsLedgerView(viewModel: viewModel)
-            case .merchants:
-                TransactionsMerchantsView(viewModel: viewModel)
-            case .search:
-                TransactionsSearchView(viewModel: viewModel)
+        ScrollView {
+            VStack(spacing: 0) {
+                headerView
+
+                Group {
+                    switch tab {
+                    case .analytics:
+                        TransactionsAnalyticsView(viewModel: viewModel)
+                    case .ledger:
+                        TransactionsLedgerView(viewModel: viewModel)
+                    case .merchants:
+                        TransactionsMerchantsView(viewModel: viewModel)
+                    case .search:
+                        TransactionsSearchView(viewModel: viewModel)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .background(Color.kSurface)
             }
         }
+        .scrollContentBackground(.hidden)
         .background(Color.kSurface)
-        .navigationTitle(tab.label)
-        .toolbarTitleDisplayMode(.inline)
-        .task {
-            await loadDataForTab()
+        .navigationTitle("Transactions")
+        .task { await loadDataForTab() }
+        .onChange(of: viewModel.viewMode) { _, _ in reloadForCurrentTab() }
+        .onChange(of: viewModel.customStart) { _, _ in
+            if viewModel.viewMode == .custom { reloadForCurrentTab() }
         }
-        .onChange(of: viewModel.viewMode) { _, _ in
-            reloadForCurrentTab()
+        .onChange(of: viewModel.customEnd) { _, _ in
+            if viewModel.viewMode == .custom { reloadForCurrentTab() }
         }
-        .onChange(of: viewModel.periodOffset) { _, _ in
-            reloadForCurrentTab()
-        }
+        .refreshable { await refreshForTab() }
         .tabBarConfig(.transactions)
     }
-    
-    // MARK: - Period Picker
-    
-    // MARK: - Toolbar: Refresh (Kalshi spec: 28×28, border-radius 999, icon 14px)
-    
-    private var refreshButton: some View {
-        Button(action: { performRefresh() }) {
-            Group {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                } else {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14))
-                }
-            }
-            .foregroundStyle(Color.kSecondary)
-            .frame(width: 28, height: 28)
-            .background(Color.kSurface, in: Circle())
-            .overlay(Circle().stroke(Color.kBorderMedium, lineWidth: 1))
-        }
-        .buttonStyle(KPressButtonStyle())
-        .disabled(viewModel.isLoading)
-    }
-    
-    private func performRefresh() {
-        let uid = userId
-        let vm = viewModel
-        _Concurrency.Task {
-            await vm.refresh(userId: uid)
+
+    // MARK: - Header
+
+    private var headerView: some View {
+        VStack(spacing: 0) {
+            TransactionsPeriodPicker(viewModel: viewModel)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+
+            // Summary metrics row
+            TransactionsSummaryStrip(viewModel: viewModel)
         }
     }
-    
+
     private func loadDataForTab() async {
         switch tab {
         case .analytics:
@@ -88,203 +78,364 @@ struct TransactionsView: View {
             break
         }
     }
-    
+
     private func reloadForCurrentTab() {
         let uid = userId
         let vm = viewModel
         let currentTab = tab
         _Concurrency.Task {
             switch currentTab {
-            case .analytics:
-                await vm.loadAnalytics(userId: uid)
-            case .ledger:
-                await vm.loadLedgerSummary(userId: uid)
-            case .merchants:
-                await vm.loadMerchants(userId: uid)
-            case .search:
-                break
+            case .analytics: await vm.loadAnalytics(userId: uid)
+            case .ledger: await vm.loadLedgerSummary(userId: uid)
+            case .merchants: await vm.loadMerchants(userId: uid)
+            case .search: break
             }
         }
     }
-    
-    private func formatCurrency(_ value: Double) -> String {
-        value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
+
+    private func refreshForTab() async {
+        switch tab {
+        case .analytics: await viewModel.loadInitialData(userId: userId)
+        case .ledger: await viewModel.loadLedgerSummary(userId: userId)
+        case .merchants: await viewModel.loadMerchants(userId: userId)
+        case .search: break
+        }
     }
 }
 
-// MARK: - Period Picker (standalone — embed in each sub-view's ScrollView)
+// MARK: - Period Picker
 
 struct TransactionsPeriodPicker: View {
     @Bindable var viewModel: TransactionsViewModel
-    
+    @State private var selected: PeriodPreset = .week
+    @State private var showSheet = false
+
     var body: some View {
-        VStack(spacing: 10) {
-            // Native iOS segmented picker — not edge-to-edge
-            Picker("Period", selection: Binding(
-                get: { viewModel.viewMode },
-                set: { newMode in
-                    withAnimation(.easeInOut(duration: 0.12)) {
-                        viewModel.viewMode = newMode
-                        viewModel.periodOffset = 0
-                        if newMode == .custom {
-                            viewModel.initCustomDates()
-                        }
-                    }
-                }
-            )) {
-                ForEach(ViewMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
+        Button { showSheet = true } label: {
+            HStack(spacing: 8) {
+                // Calendar icon
+                Image(systemName: "calendar")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+
+                // Date range
+                Text(rangeLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(-0.2)
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.15), value: rangeLabel)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
             }
-            .pickerStyle(.segmented)
-            .disabled(viewModel.isLoading)
-            
-            if viewModel.viewMode != .custom {
-                periodNavigationRow
-            } else {
-                customDatePickerRow
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background {
+                Capsule().fill(.ultraThinMaterial)
+                // Top-edge glass highlight
+                Capsule().fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.18), .clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
             }
+            .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
         }
+        .buttonStyle(KPressButtonStyle())
+        .sheet(isPresented: $showSheet) {
+            PeriodPickerSheet(viewModel: viewModel, selected: $selected)
+                .presentationDetents([.height(400)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(24)
+        }
+        .onAppear { applyPreset(.week) }
     }
-    
-    private var periodNavigationRow: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 16) {
-                Spacer()
-                
-                Button { viewModel.prevPeriod() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.kSecondary)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                }
-                .disabled(viewModel.isLoading)
-                
-                VStack(spacing: 2) {
-                    Text(viewModel.periodLabel)
-                        .font(.system(size: 16, weight: .bold))
-                        .tracking(-0.32)
-                        .foregroundStyle(Color.kPrimary)
-                    
-                    if !viewModel.periodShortLabel.isEmpty {
-                        Text(viewModel.periodShortLabel)
-                            .font(.system(size: 11, weight: .medium))
-                            .tracking(0.2)
-                            .foregroundStyle(Color.kTertiary)
-                    }
-                }
-                
-                Button { viewModel.nextPeriod() } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(viewModel.isCurrentPeriod ? Color.kPlaceholder : Color.kSecondary)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                }
-                .buttonStyle(KPressButtonStyle())
-                .disabled(viewModel.isLoading || viewModel.isCurrentPeriod)
-                
-                Spacer()
-            }
-            
-            if !viewModel.isCurrentPeriod {
-                Button {
-                    viewModel.goToday()
-                } label: {
-                    Text("TODAY")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(0.6)
-                        .foregroundStyle(Color.kBlue)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 6)
-                        .background(Color.kBlueBg, in: Capsule())
-                }
-                .buttonStyle(KPressButtonStyle())
-            }
-        }
+
+    private var rangeLabel: String {
+        let fmt = Date.FormatStyle().month(.abbreviated).day()
+        return "\(viewModel.customStart.formatted(fmt)) – \(viewModel.customEnd.formatted(fmt))"
     }
-    
-    private var customDatePickerRow: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("FROM")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(Color.kTertiary)
-                DatePicker("", selection: $viewModel.customStart, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-            }
-            
-            Text("–")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.kTertiary)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("TO")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(Color.kTertiary)
-                DatePicker("", selection: $viewModel.customEnd, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-            }
-            
-            Spacer()
+
+    func applyPreset(_ preset: PeriodPreset) {
+        let now = Date()
+        let cal = Calendar.current
+        let start: Date
+        switch preset {
+        case .week:        start = cal.date(byAdding: .day, value: -6, to: now)!
+        case .month:       start = cal.date(byAdding: .day, value: -29, to: now)!
+        case .threeMonths: start = cal.date(byAdding: .month, value: -3, to: now)!
+        case .custom:      return
         }
-        .onChange(of: viewModel.customStart) { _, _ in viewModel.onCustomDateChange() }
-        .onChange(of: viewModel.customEnd) { _, _ in viewModel.onCustomDateChange() }
+        viewModel.customStart = start
+        viewModel.customEnd = now
+        viewModel.viewMode = .custom
     }
 }
 
-// MARK: - Summary Strip (Kalshi Hero Style)
+// MARK: - Period Picker Sheet
+
+private struct PeriodPickerSheet: View {
+    @Bindable var viewModel: TransactionsViewModel
+    @Binding var selected: PeriodPreset
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showCustom = false
+
+    private let presets: [PeriodPreset] = [.week, .month, .threeMonths]
+
+    private var dayCount: Int {
+        max(1, Calendar.current.dateComponents([.day], from: viewModel.customStart, to: viewModel.customEnd).day ?? 1)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+
+            // ── Big animated date range display ──────────────────────────
+            HStack(alignment: .center, spacing: 0) {
+                // Start
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.customStart, format: .dateTime.month(.abbreviated).day())
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .tracking(-1.5)
+                        .contentTransition(.numericText())
+                    Text(viewModel.customStart, format: .dateTime.year())
+                        .font(.system(size: 11, weight: .semibold))
+                        .opacity(0.35)
+                }
+
+                Spacer()
+
+                // Day count badge in the middle
+                VStack(spacing: 6) {
+                    Rectangle()
+                        .fill(.primary.opacity(0.12))
+                        .frame(width: 1, height: 14)
+                    Text("\(dayCount)d")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(.regularMaterial, in: Capsule())
+                    Rectangle()
+                        .fill(.primary.opacity(0.12))
+                        .frame(width: 1, height: 14)
+                }
+
+                Spacer()
+
+                // End
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(viewModel.customEnd, format: .dateTime.month(.abbreviated).day())
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .tracking(-1.5)
+                        .contentTransition(.numericText())
+                    Text(viewModel.customEnd, format: .dateTime.year())
+                        .font(.system(size: 11, weight: .semibold))
+                        .opacity(0.35)
+                }
+            }
+            .padding(.horizontal, 26)
+            .padding(.top, 28)
+            .padding(.bottom, 22)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: dayCount)
+
+            // Thin rule
+            Rectangle()
+                .fill(.primary.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+
+            // ── Preset tiles ─────────────────────────────────────────────
+            HStack(spacing: 8) {
+                ForEach(presets, id: \.rawValue) { preset in
+                    presetTile(preset)
+                }
+            }
+            .padding(.horizontal, 20)
+
+            // ── Custom row ───────────────────────────────────────────────
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    selected = .custom
+                    showCustom.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Custom Range")
+                        .font(.system(size: 13, weight: .semibold))
+                        .tracking(-0.2)
+                    Spacer()
+                    Image(systemName: showCustom ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .opacity(0.35)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(showCustom ? Color.kPrimary.opacity(0.5) : .clear, lineWidth: 1.5)
+                )
+            }
+            .buttonStyle(KPressButtonStyle())
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+
+            if showCustom {
+                HStack(spacing: 14) {
+                    dateField(label: "FROM", date: $viewModel.customStart)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .opacity(0.3)
+                    dateField(label: "TO", date: $viewModel.customEnd)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .onChange(of: viewModel.customStart) { _, _ in viewModel.onCustomDateChange() }
+                .onChange(of: viewModel.customEnd) { _, _ in viewModel.onCustomDateChange() }
+            }
+
+            Spacer()
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: showCustom)
+    }
+
+    @ViewBuilder
+    private func presetTile(_ preset: PeriodPreset) -> some View {
+        let isActive = selected == preset && !showCustom
+        Button {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                selected = preset
+                showCustom = false
+                applyPreset(preset)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { dismiss() }
+        } label: {
+            VStack(spacing: 3) {
+                Text(preset.buttonLabel)
+                    .font(.system(size: 14, weight: .bold))
+                    .tracking(-0.3)
+                Text(preset.description)
+                    .font(.system(size: 10, weight: .medium))
+                    .opacity(0.6)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .background(isActive ? Color.kPrimary : .clear, in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(isActive ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.primary))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isActive ? .clear : Color.primary.opacity(0.1), lineWidth: 1)
+            )
+        }
+        .buttonStyle(KPressButtonStyle())
+    }
+
+    private func dateField(label: String, date: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            KLabel(label)
+            DatePicker("", selection: date, displayedComponents: .date)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+        }
+    }
+
+    private func applyPreset(_ preset: PeriodPreset) {
+        let now = Date()
+        let cal = Calendar.current
+        let start: Date
+        switch preset {
+        case .week:        start = cal.date(byAdding: .day, value: -6, to: now)!
+        case .month:       start = cal.date(byAdding: .day, value: -29, to: now)!
+        case .threeMonths: start = cal.date(byAdding: .month, value: -3, to: now)!
+        case .custom:      return
+        }
+        viewModel.customStart = start
+        viewModel.customEnd = now
+        viewModel.viewMode = .custom
+    }
+}
+
+// MARK: - Period Preset
+
+enum PeriodPreset: String, CaseIterable {
+    case week        = "Week"
+    case month       = "Month"
+    case threeMonths = "3 Months"
+    case custom      = "Custom"
+
+    var buttonLabel: String {
+        switch self {
+        case .week:        return "Week"
+        case .month:       return "Month"
+        case .threeMonths: return "3M"
+        case .custom:      return "Custom"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .week:        return "Last 7 days"
+        case .month:       return "Last 30 days"
+        case .threeMonths: return "Last 3 months"
+        case .custom:      return "Any range"
+        }
+    }
+}
+
+// MARK: - Summary Strip
 
 struct TransactionsSummaryStrip: View {
     @Bindable var viewModel: TransactionsViewModel
-    
+
     var body: some View {
         let net = viewModel.totalIncome - viewModel.totalSpent
-        
+
         HStack(spacing: 0) {
-            heroMetric(label: "Spent", value: formatCurrency(viewModel.totalSpent))
-            
-            Rectangle()
-                .fill(Color.kBorderMedium)
-                .frame(width: 1, height: 32)
-            
-            heroMetric(label: "Income", value: formatCurrency(viewModel.totalIncome))
-            
-            Rectangle()
-                .fill(Color.kBorderMedium)
-                .frame(width: 1, height: 32)
-            
-            heroMetric(label: "Net", value: "\(net >= 0 ? "+" : "")\(formatCurrency(net))")
+            metric(label: "SPENT", value: formatCurrency(viewModel.totalSpent))
+            KDivider(height: 24)
+            metric(label: "IN", value: formatCurrency(viewModel.totalIncome), color: Color.kGreen)
+            KDivider(height: 24)
+            metric(
+                label: "NET",
+                value: "\(net >= 0 ? "+" : "")\(formatCurrency(net))",
+                color: net >= 0 ? Color.kGreen : Color.kRed
+            )
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Color.kDividerBg)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.kBorder).frame(height: 1)
+        }
     }
-    
-    private func heroMetric(label: String, value: String) -> some View {
-        VStack(spacing: 4) {
+
+    private func metric(label: String, value: String, color: Color = Color.kPrimary) -> some View {
+        VStack(spacing: 1) {
             Text(value)
-                .font(.system(size: 23, weight: .bold)) // Kalshi Large Metric
-                .tracking(-0.92)
-                .foregroundStyle(Color.kPrimary)
+                .font(.system(size: 13, weight: .bold))
+                .tracking(-0.4)
+                .foregroundStyle(color)
                 .lineLimit(1)
-                .minimumScaleFactor(0.5)
+                .minimumScaleFactor(0.7)
                 .contentTransition(.numericText())
-            
-            Text(label.uppercased())
-                .font(.system(size: 10, weight: .bold))
-                .tracking(0.6)
-                .foregroundStyle(Color.kTertiary)
+            KLabel(label)
         }
         .frame(maxWidth: .infinity)
     }
-    
+
     private func formatCurrency(_ value: Double) -> String {
-        value.formatted(.currency(code: "USD").precision(.fractionLength(0)))
+        abs(value).formatted(.currency(code: "USD").precision(.fractionLength(0)))
     }
 }
 
@@ -292,9 +443,9 @@ struct TransactionsSummaryStrip: View {
 
 enum TransactionTab: String, CaseIterable, Identifiable {
     case analytics, ledger, merchants, search
-    
+
     var id: String { rawValue }
-    
+
     var label: String {
         switch self {
         case .analytics: "Analytics"
@@ -303,7 +454,7 @@ enum TransactionTab: String, CaseIterable, Identifiable {
         case .search: "Search"
         }
     }
-    
+
     var icon: String {
         switch self {
         case .analytics: "chart.pie"
@@ -318,9 +469,9 @@ enum TransactionTab: String, CaseIterable, Identifiable {
 
 enum ViewMode: String, CaseIterable, Identifiable {
     case weekly, biweekly, monthly, custom
-    
+
     var id: String { rawValue }
-    
+
     var label: String {
         switch self {
         case .weekly: "Weekly"
@@ -339,9 +490,9 @@ enum TimeRange: String, CaseIterable, Identifiable {
     case ninetyDays = "90d"
     case sixMonths = "6m"
     case oneYear = "1y"
-    
+
     var id: String { rawValue }
-    
+
     var label: String {
         switch self {
         case .sevenDays: "7 Days"
@@ -351,7 +502,7 @@ enum TimeRange: String, CaseIterable, Identifiable {
         case .oneYear: "1 Year"
         }
     }
-    
+
     var dateRange: (start: Date, end: Date) {
         let end = Date()
         let start: Date
@@ -369,7 +520,7 @@ enum TimeRange: String, CaseIterable, Identifiable {
 // MARK: - Day Group (Ledger)
 
 struct DayGroup: Identifiable {
-    let id: String  // date string
+    let id: String
     let date: String
     let label: String
     let dayOfWeek: String
@@ -394,14 +545,14 @@ struct MerchantSummary: Identifiable {
     var firstTransactionDate: Date = .distantFuture
     var categories: Set<String> = []
     var sharePercent: Double = 0
-    
+
     var totalVolume: Double { totalSpent + totalEarned }
-    
+
     var averageTransaction: Double {
         guard transactionCount > 0 else { return 0 }
         return totalVolume / Double(transactionCount)
     }
-    
+
     var isRecurring: Bool { transactionCount >= 3 }
 }
 
@@ -420,7 +571,7 @@ struct MerchantDetail {
 
 enum MerchantSortField: String, CaseIterable {
     case name, totalVolume, transactionCount, averageTransaction
-    
+
     var label: String {
         switch self {
         case .name: "Name"
@@ -435,7 +586,7 @@ enum MerchantSortField: String, CaseIterable {
 
 struct SearchFilters {
     var searchText = ""
-    var transactionType = "all"  // all, expense, income
+    var transactionType = "all"
     var category = "all"
     var minAmount: Double?
     var maxAmount: Double?
@@ -468,10 +619,10 @@ final class TransactionsViewModel {
     var periodOffset: Int = 0
     var customStart: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
     var customEnd: Date = Date()
-    
+
     var isLoading = false
     var errorMessage: String?
-    
+
     // Summary stats
     var totalSpent: Double = 0
     var totalIncome: Double = 0
@@ -479,10 +630,10 @@ final class TransactionsViewModel {
     var incomeCount: Int = 0
     var totalCount: Int = 0
     var hasTransactions = false
-    
+
     // Analytics data
     var analysisData: SpendingAnalysisResponseDTO?
-    
+
     // Ledger data
     var ledgerDayGroups: [DayGroup] = []
     var expandedDays: Set<String> = []
@@ -491,12 +642,12 @@ final class TransactionsViewModel {
     var ledgerTotalCredits: Double = 0
     var ledgerNetFlow: Double = 0
     var ledgerTxnCount: Int = 0
-    
-    // Legacy ledger (keep for compatibility during transition)
+
+    // Legacy ledger (compatibility)
     var transactions: [TransactionDTO] = []
     var currentPage = 1
     var totalPages = 1
-    
+
     // Merchants data
     var merchantSummaries: [MerchantSummary] = []
     var merchantSortField: MerchantSortField = .totalVolume
@@ -507,7 +658,7 @@ final class TransactionsViewModel {
     var merchantTotalVolume: Double = 0
     var merchantRecurringCount: Int = 0
     var merchantAvgPerMerchant: Double = 0
-    
+
     // Search data
     var searchFilters = SearchFilters()
     var searchResults: [TransactionDTO] = []
@@ -517,34 +668,29 @@ final class TransactionsViewModel {
     var isSearchLoading = false
     var savedFilters: [SavedFilter] = []
     var categories: [String] = []
-    
+
     let api = TransactionsAPI(client: AppAPIClient.live())
     private let dateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withFullDate]
         return f
     }()
-    
+
     // MARK: - Period Computed Properties
-    
+
     var periodStartDate: String {
-        if viewMode == .custom {
-            return dateFormatter.string(from: customStart)
-        }
-        let bounds = computePeriodBounds()
-        return dateFormatter.string(from: bounds.start)
+        viewMode == .custom
+            ? dateFormatter.string(from: customStart)
+            : dateFormatter.string(from: computePeriodBounds().start)
     }
-    
+
     var periodEndDate: String {
-        if viewMode == .custom {
-            return dateFormatter.string(from: customEnd)
-        }
+        if viewMode == .custom { return dateFormatter.string(from: customEnd) }
         let bounds = computePeriodBounds()
         let now = Date()
-        let cappedEnd = bounds.end > now ? now : bounds.end
-        return dateFormatter.string(from: cappedEnd)
+        return dateFormatter.string(from: bounds.end > now ? now : bounds.end)
     }
-    
+
     var periodLabel: String {
         if viewMode == .custom {
             let fmt = Date.FormatStyle().month(.abbreviated).day()
@@ -557,7 +703,7 @@ final class TransactionsViewModel {
         let fmt = Date.FormatStyle().month(.abbreviated).day()
         return "\(bounds.start.formatted(fmt)) – \(bounds.end.formatted(fmt)), \(bounds.end.formatted(.dateTime.year()))"
     }
-    
+
     var periodShortLabel: String {
         if viewMode == .custom { return "Custom Range" }
         if periodOffset == 0 {
@@ -578,87 +724,73 @@ final class TransactionsViewModel {
         }
         return ""
     }
-    
-    var isCurrentPeriod: Bool {
-        viewMode == .custom || periodOffset == 0
-    }
-    
-    var spendingToIncomeRatio: Double? {
-        guard totalIncome > 0 else { return nil }
-        return totalSpent / totalIncome
-    }
-    
-    var netCashFlow: Double {
-        totalIncome - totalSpent
-    }
-    
+
+    var isCurrentPeriod: Bool { viewMode == .custom || periodOffset == 0 }
+
+    var netCashFlow: Double { totalIncome - totalSpent }
+
     // MARK: - Period Navigation
-    
-    func prevPeriod() {
-        periodOffset -= 1
-    }
-    
+
+    func prevPeriod() { periodOffset -= 1 }
+
     func nextPeriod() {
-        if periodOffset < 0 {
-            periodOffset += 1
-        }
+        if periodOffset < 0 { periodOffset += 1 }
     }
-    
+
     func goToday() {
         guard periodOffset != 0 else { return }
         periodOffset = 0
     }
-    
+
     func initCustomDates() {
         let now = Date()
         customStart = Calendar.current.date(byAdding: .day, value: -30, to: now)!
         customEnd = now
     }
-    
+
     func onCustomDateChange() {
         guard customStart <= customEnd else { return }
-        // Enforce 90-day max
         let diffDays = Calendar.current.dateComponents([.day], from: customStart, to: customEnd).day ?? 0
         if diffDays > 90 {
             customStart = Calendar.current.date(byAdding: .day, value: -90, to: customEnd)!
         }
     }
-    
+
     private func computePeriodBounds() -> (start: Date, end: Date) {
         let today = Date()
         let cal = Calendar.current
-        
+
         switch viewMode {
         case .weekly:
-            let dow = cal.component(.weekday, from: today) - 1 // 0 = Sun
+            let dow = cal.component(.weekday, from: today) - 1
             var start = cal.date(byAdding: .day, value: -dow + periodOffset * 7, to: today)!
             start = cal.startOfDay(for: start)
             let end = cal.date(byAdding: .day, value: 6, to: start)!
             return (start, end)
-            
+
         case .biweekly:
             let dow = cal.component(.weekday, from: today) - 1
             var start = cal.date(byAdding: .day, value: -dow + periodOffset * 14, to: today)!
             start = cal.startOfDay(for: start)
             let end = cal.date(byAdding: .day, value: 13, to: start)!
             return (start, end)
-            
+
         case .monthly:
             var comps = cal.dateComponents([.year, .month], from: today)
             comps.month! += periodOffset
             let start = cal.date(from: comps)!
             comps.month! += 1
-            comps.day = 0 // last day of previous month
+            comps.day = 0
             let end = cal.date(from: comps)!
             return (start, end)
-            
+
         case .custom:
             return (customStart, customEnd)
         }
     }
-    
+
     // MARK: - Data Loading
-    
+
     func loadInitialData(userId: String) async {
         guard !userId.isEmpty else { return }
         isLoading = true
@@ -666,11 +798,11 @@ final class TransactionsViewModel {
         await loadAnalytics(userId: userId)
         isLoading = false
     }
-    
+
     func refresh(userId: String) async {
         await loadInitialData(userId: userId)
     }
-    
+
     func loadSummary(userId: String) async {
         do {
             let response = try await api.getAllTransactions(
@@ -687,43 +819,43 @@ final class TransactionsViewModel {
             errorMessage = error.localizedDescription
         }
     }
-    
+
     func loadAnalytics(userId: String) async {
         guard !userId.isEmpty else { return }
-        let startDate = periodStartDate
-        let endDate = periodEndDate
-        
         do {
-            analysisData = try await api.getSpendingAnalysis(userId: userId, startDate: startDate, endDate: endDate)
+            analysisData = try await api.getSpendingAnalysis(
+                userId: userId, startDate: periodStartDate, endDate: periodEndDate
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
     }
-    
+
     // MARK: - Ledger
-    
+
     func loadLedgerSummary(userId: String) async {
         guard !userId.isEmpty else { return }
         isLoading = true
         expandedDays.removeAll()
         expandedTransactionId = nil
-        
+
         do {
-            let analysis = try await api.getSpendingAnalysis(userId: userId, startDate: periodStartDate, endDate: periodEndDate)
-            
+            let analysis = try await api.getSpendingAnalysis(
+                userId: userId, startDate: periodStartDate, endDate: periodEndDate
+            )
+
             ledgerTotalDebits = analysis.totalSpent ?? 0
             ledgerTotalCredits = analysis.totalIncome ?? 0
             ledgerNetFlow = ledgerTotalCredits - ledgerTotalDebits
             ledgerTxnCount = analysis.totalTransactions ?? 0
-            
-            // Also update shared stats
+
             totalSpent = analysis.totalSpent ?? 0
             totalIncome = analysis.totalIncome ?? 0
-            
+
             let daily = (analysis.dailyBreakdown ?? [])
                 .filter { ($0.transactionCount ?? 0) > 0 }
                 .sorted { parseDate($0.date) > parseDate($1.date) }
-            
+
             ledgerDayGroups = daily.map { d in
                 let dt = parseDate(d.date)
                 let dateKey = String(d.date.prefix(10))
@@ -744,23 +876,22 @@ final class TransactionsViewModel {
         }
         isLoading = false
     }
-    
+
     func toggleDay(_ date: String, userId: String) async {
         if expandedDays.contains(date) {
             expandedDays.remove(date)
             return
         }
         expandedDays.insert(date)
-        
+
         guard let idx = ledgerDayGroups.firstIndex(where: { $0.date == date }),
               !ledgerDayGroups[idx].loaded else { return }
-        
+
         ledgerDayGroups[idx].loading = true
         do {
             let resp = try await api.getAllTransactions(
                 userId: userId, page: 1, pageSize: 200,
-                startDate: date, endDate: date,
-                sortBy: "date", sortOrder: "desc"
+                startDate: date, endDate: date, sortBy: "date", sortOrder: "desc"
             )
             ledgerDayGroups[idx].transactions = resp.transactions ?? []
             ledgerDayGroups[idx].loaded = true
@@ -770,24 +901,23 @@ final class TransactionsViewModel {
         }
         ledgerDayGroups[idx].loading = false
     }
-    
+
     // MARK: - Merchants
-    
+
     func loadMerchants(userId: String) async {
         guard !userId.isEmpty else { return }
         isLoading = true
         expandedMerchantName = nil
         merchantDetails.removeAll()
-        
+
         let startDate = periodStartDate
         let endDate = periodEndDate
-        
+
         do {
-            // Fetch all transactions to aggregate merchants
             var allTransactions: [TransactionDTO] = []
             var page = 1
             var hasMore = true
-            
+
             while hasMore && page <= 10 {
                 let response = try await api.getAllTransactions(
                     userId: userId, page: page, pageSize: 100,
@@ -797,43 +927,34 @@ final class TransactionsViewModel {
                 hasMore = response.pagination?.hasNext ?? false
                 page += 1
             }
-            
-            // Aggregate by merchant
+
             var merchantMap: [String: MerchantSummary] = [:]
             for tx in allTransactions {
                 let name = tx.merchantName ?? tx.name ?? "Unknown"
                 var summary = merchantMap[name] ?? MerchantSummary(name: name)
-                
-                if tx.isExpense {
-                    summary.totalSpent += tx.displayAmount
-                } else {
-                    summary.totalEarned += tx.displayAmount
-                }
+
+                if tx.isExpense { summary.totalSpent += tx.displayAmount }
+                else { summary.totalEarned += tx.displayAmount }
                 summary.transactionCount += 1
-                
-                if let cat = tx.category {
-                    summary.categories.insert(cat)
-                }
-                
+
+                if let cat = tx.category { summary.categories.insert(cat) }
+
                 let txDate = parseDate(tx.date)
-                if txDate > summary.lastTransactionDate {
-                    summary.lastTransactionDate = txDate
-                }
-                if txDate < summary.firstTransactionDate {
-                    summary.firstTransactionDate = txDate
-                }
-                
+                if txDate > summary.lastTransactionDate { summary.lastTransactionDate = txDate }
+                if txDate < summary.firstTransactionDate { summary.firstTransactionDate = txDate }
+
                 merchantMap[name] = summary
             }
-            
-            // Calculate grand total for share %
+
             let grandTotal = merchantMap.values.reduce(0.0) { $0 + $1.totalVolume }
-            
-            merchantSummaries = merchantMap.values
-                .map { var m = $0; m.sharePercent = grandTotal > 0 ? (m.totalVolume / grandTotal) * 100 : 0; return m }
-            
+
+            merchantSummaries = merchantMap.values.map { m in
+                var copy = m
+                copy.sharePercent = grandTotal > 0 ? (m.totalVolume / grandTotal) * 100 : 0
+                return copy
+            }
+
             applyMerchantSort()
-            
             merchantTotalVolume = grandTotal
             merchantRecurringCount = merchantSummaries.filter(\.isRecurring).count
             merchantAvgPerMerchant = merchantSummaries.isEmpty ? 0 : grandTotal / Double(merchantSummaries.count)
@@ -842,7 +963,7 @@ final class TransactionsViewModel {
         }
         isLoading = false
     }
-    
+
     func toggleMerchantSort(_ field: MerchantSortField) {
         if merchantSortField == field {
             merchantSortAscending.toggle()
@@ -852,7 +973,7 @@ final class TransactionsViewModel {
         }
         applyMerchantSort()
     }
-    
+
     func applyMerchantSort() {
         let asc = merchantSortAscending
         merchantSummaries.sort { a, b in
@@ -866,23 +987,22 @@ final class TransactionsViewModel {
             return asc ? result : !result
         }
     }
-    
+
     func toggleMerchantExpand(_ name: String, userId: String) async {
         if expandedMerchantName == name {
             expandedMerchantName = nil
             return
         }
         expandedMerchantName = name
-        
+
         guard merchantDetails[name] == nil else { return }
         merchantDetailLoading.insert(name)
-        
+
         do {
-            // Fetch transactions for this merchant
             var results: [TransactionDTO] = []
             var page = 1
             var hasMore = true
-            
+
             while hasMore && page <= 20 {
                 let resp = try await api.getAllTransactions(
                     userId: userId, page: page, pageSize: 100,
@@ -895,21 +1015,20 @@ final class TransactionsViewModel {
                 hasMore = resp.pagination?.hasNext ?? false
                 page += 1
             }
-            
+
             results.sort { parseDate($0.date) > parseDate($1.date) }
-            
+
             var spent = 0.0, earned = 0.0
             var firstDate: Date?
             var lastDate: Date?
-            
+
             for t in results {
-                if t.amount > 0 { spent += t.amount }
-                else { earned += abs(t.amount) }
+                if t.amount > 0 { spent += t.amount } else { earned += abs(t.amount) }
                 let d = parseDate(t.date)
                 if firstDate == nil || d < firstDate! { firstDate = d }
                 if lastDate == nil || d > lastDate! { lastDate = d }
             }
-            
+
             merchantDetails[name] = MerchantDetail(
                 totalSpent: spent,
                 totalEarned: earned,
@@ -926,44 +1045,38 @@ final class TransactionsViewModel {
         }
         merchantDetailLoading.remove(name)
     }
-    
+
     // MARK: - Search
-    
+
     func executeSearch(userId: String) async {
         guard !userId.isEmpty else { return }
         isSearchLoading = true
-        
+
         let startDate = dateFormatter.string(from: searchFilters.startDate)
         let endDate = dateFormatter.string(from: searchFilters.endDate)
         let search = searchFilters.searchText.isEmpty ? nil : searchFilters.searchText
-        
+
         do {
             let response = try await api.getAllTransactions(
                 userId: userId, page: searchPage, pageSize: 20,
                 startDate: startDate, endDate: endDate,
                 search: search, sortBy: "date", sortOrder: "desc"
             )
-            
+
             var txns = response.transactions ?? []
-            
-            // Apply client-side filters
+
             txns = txns.filter { t in
                 if searchFilters.transactionType == "expense" && !t.isExpense { return false }
                 if searchFilters.transactionType == "income" && !t.isIncome { return false }
-                
                 if let min = searchFilters.minAmount, t.displayAmount < min { return false }
                 if let max = searchFilters.maxAmount, t.displayAmount > max { return false }
-                
                 if searchFilters.category != "all" && t.category != searchFilters.category { return false }
-                
                 if !searchFilters.merchantName.isEmpty {
-                    let merchantLower = searchFilters.merchantName.lowercased()
-                    guard (t.merchantName ?? "").lowercased().contains(merchantLower) else { return false }
+                    guard (t.merchantName ?? "").lowercased().contains(searchFilters.merchantName.lowercased()) else { return false }
                 }
-                
                 return true
             }
-            
+
             searchResults = txns
             searchTotalCount = response.pagination?.totalItems ?? txns.count
             searchTotalPages = response.pagination?.totalPages ?? 1
@@ -973,26 +1086,25 @@ final class TransactionsViewModel {
         }
         isSearchLoading = false
     }
-    
+
     func loadCategories(userId: String) async {
         guard !userId.isEmpty else { return }
         do {
             let response = try await api.getAllTransactions(userId: userId, page: 1, pageSize: 100)
             let catSet = Set((response.transactions ?? []).compactMap(\.category))
             categories = catSet.sorted()
-        } catch { /* ignore */ }
+        } catch { }
     }
-    
+
     func clearSearchFilters() {
         searchFilters = SearchFilters()
         searchResults = []
         searchPage = 1
     }
-    
+
     func saveFilter(name: String) {
         let filter = SavedFilter(
-            id: UUID().uuidString,
-            name: name,
+            id: UUID().uuidString, name: name,
             searchText: searchFilters.searchText,
             transactionType: searchFilters.transactionType,
             category: searchFilters.category,
@@ -1006,7 +1118,7 @@ final class TransactionsViewModel {
         savedFilters.append(filter)
         persistSavedFilters()
     }
-    
+
     func loadSavedFilter(_ filter: SavedFilter) {
         searchFilters.searchText = filter.searchText
         searchFilters.transactionType = filter.transactionType
@@ -1017,26 +1129,26 @@ final class TransactionsViewModel {
         if let d = dateFormatter.date(from: filter.startDateStr) { searchFilters.startDate = d }
         if let d = dateFormatter.date(from: filter.endDateStr) { searchFilters.endDate = d }
     }
-    
+
     func deleteSavedFilter(id: String) {
         savedFilters.removeAll { $0.id == id }
         persistSavedFilters()
     }
-    
+
     func loadPersistedFilters() {
         guard let data = UserDefaults.standard.data(forKey: "savedTransactionFilters"),
               let filters = try? JSONDecoder().decode([SavedFilter].self, from: data) else { return }
         savedFilters = filters
     }
-    
+
     private func persistSavedFilters() {
         if let data = try? JSONEncoder().encode(savedFilters) {
             UserDefaults.standard.set(data, forKey: "savedTransactionFilters")
         }
     }
-    
+
     // MARK: - Helpers
-    
+
     func parseDate(_ dateString: String) -> Date {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

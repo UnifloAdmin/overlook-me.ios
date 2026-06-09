@@ -58,5 +58,7 @@
 	<string>Overlook Me uses your health data to display sleep, heart rate, activity, and water intake on your dashboard for a complete wellness overview.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Overlook Me can log water intake to help you track your hydration goals throughout the day.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

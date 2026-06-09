@@ -18,9 +18,9 @@ enum CAMAConfig {
             // CAMA runs on http://localhost:5091
             return "http://localhost:5091/api"
         case .staging:
-            return "https://cama-prod.thankfulcoast-60df155d.eastus.azurecontainerapps.io/api"
+            return "https://cama.overlookme.com/api"
         case .production:
-            return "https://cama-prod.thankfulcoast-60df155d.eastus.azurecontainerapps.io/api"
+            return "https://cama.overlookme.com/api"
         }
     }()
     
@@ -35,6 +35,12 @@ enum CAMAConfig {
     static var confirmEmailURL: String { "\(authURL)/confirm-email" }
     static var resendVerificationURL: String { "\(authURL)/resend-verification-email" }
     static var emailStatusURL: String { "\(authURL)/email-status" }
+
+    // Trusted device endpoints
+    static var deviceTrustURL: String { "\(authURL)/device-trust" }
+    static var deviceTrustValidateURL: String { "\(deviceTrustURL)/validate" }
+    static var deviceTrustListURL: String { "\(deviceTrustURL)/list" }
+    static func deviceTrustRevokeURL(id: String) -> String { "\(deviceTrustURL)/revoke/\(id)" }
     
     // Passwordless (passkey login) endpoints
     static var passwordlessCheckURL: String { "\(authURL)/passwordless/check" }

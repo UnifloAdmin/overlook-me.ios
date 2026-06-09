@@ -8,36 +8,38 @@ struct MoodTrackerView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 16) {
-                headerSection
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 16)
-
-                todayCard
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 20)
-
-                if todaysMood == nil {
-                    moodPicker
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                weeklyGlass
-                    .opacity(appeared ? 1 : 0)
-
-                if !moodHistory.isEmpty {
-                    historyGlass
+            VStack(spacing: 0) {
+                VStack(spacing: 16) {
+                    headerSection
                         .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 16)
+
+                    todayCard
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 20)
+
+                    if todaysMood == nil {
+                        moodPicker
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    weeklyGlass
+                        .opacity(appeared ? 1 : 0)
+
+                    if !moodHistory.isEmpty {
+                        historyGlass
+                            .opacity(appeared ? 1 : 0)
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 100)
+                .background(Color(.systemBackground))
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 100)
         }
         .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
         .navigationTitle("Wellness")
-        .navigationBarTitleDisplayMode(.large)
         .onAppear {
             loadPersistedData()
             withAnimation(.spring(duration: 0.5, bounce: 0.12)) { appeared = true }

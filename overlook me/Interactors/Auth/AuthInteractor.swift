@@ -29,6 +29,7 @@ protocol AuthInteractor {
     func forgotPassword(email: String) async -> AuthResult
     func verifyTwoFactor(userId: String, code: String) async -> AuthResult
     func logout() async
+    func loginWithTrustedDevice() async -> AuthResult
     func checkEmailStatus() async -> Bool?
     func checkTwoFactorStatus() async -> Bool?
     func resendVerificationEmail() async -> AuthResult
@@ -41,6 +42,8 @@ protocol AuthInteractor {
     func removeAuthenticatorDevice(deviceId: String) async -> AuthResult
     // Passkey
     func loginWithPasskey() async -> AuthResult
+    func prefetchPasskeyChallenge() async
+    func loginWithCachedPasskey() async -> AuthResult
     func registerPasskey() async -> AuthResult
     func listPasskeys() async -> [PasskeyCredential]
     func deletePasskey(id: String) async -> AuthResult
@@ -72,21 +75,35 @@ struct RealAuthInteractor: AuthInteractor {
     let appState: Store<AppState>
     let repository: AuthRepository
     let passkeyService = PasskeyService()
+    private var deviceTrustManager: DeviceTrustManager { DeviceTrustManager(repository: repository) }
     
     func checkAuthentication() async {
         appState.state.auth.isLoading = true
+
+        if let trustedDeviceResponse = await deviceTrustManager.validateTrustedDevice() {
+            handleAuthSuccess(trustedDeviceResponse)
+            appState.state.auth.isLoading = false
+            return
+        }
         
         guard let accessToken = try? KeychainHelper.retrieveString(for: .accessToken),
               let refreshToken = try? KeychainHelper.retrieveString(for: .refreshToken) else {
-            appState.state.auth.isAuthenticated = false
-            appState.state.auth.user = nil
+            // No stored credentials at all — try passkey as last resort
+            await attemptPasskeyRecovery()
             appState.state.auth.isLoading = false
             return
         }
         
         do {
-            let response = try await repository.refreshToken(accessToken: accessToken, refreshToken: refreshToken)
+            // Step 1: Try refresh token (CAMA now auto-creates new session if old one is dead)
+            let response = try await repository.refreshToken(
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                deviceInfo: DeviceInfoCollector.collect()
+            )
             handleAuthSuccess(response)
+            appState.state.auth.isLoading = false
+            return
         } catch {
             let isAuthRejection: Bool
             switch error {
@@ -99,10 +116,22 @@ struct RealAuthInteractor: AuthInteractor {
             }
 
             if isAuthRejection {
+                // Step 2: Refresh token expired — try silent passkey (Face ID) re-auth
+                print("🔑 [Auth] Refresh token rejected — attempting passkey recovery")
+                let passkeyResult = await loginWithCachedPasskey()
+                if passkeyResult.success {
+                    print("✅ [Auth] Passkey recovery successful — session renewed")
+                    appState.state.auth.isLoading = false
+                    return
+                }
+                
+                // Step 3: Both failed — actually log out
+                print("❌ [Auth] All recovery methods failed — logging out")
                 appState.state.auth.isAuthenticated = false
                 appState.state.auth.user = nil
                 try? KeychainHelper.deleteAll()
             } else {
+                // Network error — restore from cache, don't nuke credentials
                 restoreFromCache()
             }
         }
@@ -121,13 +150,29 @@ struct RealAuthInteractor: AuthInteractor {
         appState.state.auth.isAuthenticated = true
         appState.state.auth.user = user
     }
+
+    /// Last-resort recovery: try passkey (Face ID) to get a fresh session.
+    /// Called when no stored tokens exist or all token refresh methods fail.
+    private func attemptPasskeyRecovery() async {
+        print("🔑 [Auth] No stored credentials — attempting passkey recovery")
+        let result = await loginWithCachedPasskey()
+        if !result.success {
+            print("❌ [Auth] Passkey recovery failed — user must log in manually")
+            appState.state.auth.isAuthenticated = false
+            appState.state.auth.user = nil
+        }
+    }
     
     func loginWithEmail(email: String, password: String) async -> LoginResult {
         appState.state.auth.isLoading = true
         appState.state.auth.error = nil
         
         do {
-            let response = try await repository.loginWithEmail(email: email, password: password)
+            let response = try await repository.loginWithEmail(
+                email: email,
+                password: password,
+                deviceInfo: DeviceInfoCollector.collect()
+            )
             
             if response.requiresTwoFactorAuth {
                 appState.state.auth.isLoading = false
@@ -148,7 +193,14 @@ struct RealAuthInteractor: AuthInteractor {
         appState.state.auth.error = nil
         
         do {
-            let response = try await repository.register(email: email, password: password, confirmPassword: confirmPassword, firstName: firstName, lastName: lastName)
+            let response = try await repository.register(
+                email: email,
+                password: password,
+                confirmPassword: confirmPassword,
+                firstName: firstName,
+                lastName: lastName,
+                deviceInfo: DeviceInfoCollector.collect()
+            )
             handleAuthSuccess(response)
             appState.state.auth.isLoading = false
             return AuthResult(success: true, error: nil)
@@ -171,7 +223,11 @@ struct RealAuthInteractor: AuthInteractor {
         appState.state.auth.isLoading = true
         
         do {
-            let response = try await repository.verifyTwoFactor(userId: userId, code: code)
+            let response = try await repository.verifyTwoFactor(
+                userId: userId,
+                code: code,
+                deviceInfo: DeviceInfoCollector.collect()
+            )
             handleAuthSuccess(response)
             appState.state.auth.isLoading = false
             return AuthResult(success: true, error: nil)
@@ -193,6 +249,18 @@ struct RealAuthInteractor: AuthInteractor {
         appState.state.auth.user = nil
         appState.state.auth.error = nil
         appState.state.auth.isLoading = false
+    }
+
+    func loginWithTrustedDevice() async -> AuthResult {
+        appState.state.auth.isLoading = true
+        defer { appState.state.auth.isLoading = false }
+
+        guard let response = await deviceTrustManager.validateTrustedDevice() else {
+            return AuthResult(success: false, error: "Trusted device unlock failed.")
+        }
+
+        handleAuthSuccess(response)
+        return AuthResult(success: true, error: nil)
     }
     
     func checkEmailStatus() async -> Bool? {
@@ -306,7 +374,66 @@ struct RealAuthInteractor: AuthInteractor {
 
             let response = try await repository.completePasskeyLogin(
                 challengeId: beginResponse.challengeId,
-                assertionResponse: assertionDict
+                assertionResponse: assertionDict,
+                deviceInfo: DeviceInfoCollector.collect()
+            )
+
+            handleAuthSuccess(response)
+            appState.state.auth.isLoading = false
+            return AuthResult(success: true, error: nil)
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            appState.state.auth.isLoading = false
+            return AuthResult(success: false, error: "Passkey sign-in was cancelled.")
+        } catch {
+            appState.state.auth.isLoading = false
+            return AuthResult(success: false, error: error.localizedDescription)
+        }
+    }
+
+    func prefetchPasskeyChallenge() async {
+        if PasskeyChallengeCache.shared.prefetchTask != nil { return }
+        
+        PasskeyChallengeCache.shared.prefetchTask = _Concurrency.Task {
+            try await repository.beginPasskeyLogin()
+        }
+    }
+
+    func loginWithCachedPasskey() async -> AuthResult {
+        appState.state.auth.isLoading = true
+        appState.state.auth.error = nil
+
+        do {
+            let beginResponse: PasskeyBeginResponse
+            if let task = PasskeyChallengeCache.shared.prefetchTask {
+                PasskeyChallengeCache.shared.prefetchTask = nil
+                beginResponse = try await task.value
+            } else {
+                beginResponse = try await repository.beginPasskeyLogin()
+            }
+
+            let challengeData = base64URLDecode(beginResponse.options.challenge ?? "") ?? Data()
+            let rpId = beginResponse.options.resolvedRpId
+
+            // System assertion via ASAuthorizationController (Face ID)
+            let assertion = try await passkeyService.authenticate(challengeData: challengeData, rpID: rpId)
+
+            // Complete — send assertion to server
+            let assertionDict: [String: Any] = [
+                "id": base64URLEncode(assertion.credentialID),
+                "rawId": base64URLEncode(assertion.credentialID),
+                "type": "public-key",
+                "response": [
+                    "authenticatorData": base64URLEncode(assertion.rawAuthenticatorData),
+                    "clientDataJSON": base64URLEncode(assertion.rawClientDataJSON),
+                    "signature": base64URLEncode(assertion.signature),
+                    "userHandle": base64URLEncode(assertion.userID)
+                ] as [String: String]
+            ]
+
+            let response = try await repository.completePasskeyLogin(
+                challengeId: beginResponse.challengeId,
+                assertionResponse: assertionDict,
+                deviceInfo: DeviceInfoCollector.collect()
             )
 
             handleAuthSuccess(response)
@@ -397,6 +524,7 @@ struct RealAuthInteractor: AuthInteractor {
         if let sessionId = response.sessionId {
             try? KeychainHelper.save(sessionId, for: .sessionId)
         }
+        deviceTrustManager.storeDeviceTrustToken(response.deviceTrustToken)
         
         // Build user
         let fullName = [response.firstName, response.lastName]
@@ -451,6 +579,7 @@ struct StubAuthInteractor: AuthInteractor {
     func forgotPassword(email: String) async -> AuthResult { AuthResult(success: true, error: nil) }
     func verifyTwoFactor(userId: String, code: String) async -> AuthResult { AuthResult(success: true, error: nil) }
     func logout() async {}
+    func loginWithTrustedDevice() async -> AuthResult { AuthResult(success: true, error: nil) }
     func checkEmailStatus() async -> Bool? { true }
     func checkTwoFactorStatus() async -> Bool? { true }
     func resendVerificationEmail() async -> AuthResult { AuthResult(success: true, error: nil) }
@@ -461,6 +590,8 @@ struct StubAuthInteractor: AuthInteractor {
     func getAuthenticatorDevices() async -> [AuthenticatorDevice] { [] }
     func removeAuthenticatorDevice(deviceId: String) async -> AuthResult { AuthResult(success: true, error: nil) }
     func loginWithPasskey() async -> AuthResult { AuthResult(success: true, error: nil) }
+    func prefetchPasskeyChallenge() async {}
+    func loginWithCachedPasskey() async -> AuthResult { AuthResult(success: true, error: nil) }
     func registerPasskey() async -> AuthResult { AuthResult(success: true, error: nil) }
     func listPasskeys() async -> [PasskeyCredential] { [] }
     func deletePasskey(id: String) async -> AuthResult { AuthResult(success: true, error: nil) }

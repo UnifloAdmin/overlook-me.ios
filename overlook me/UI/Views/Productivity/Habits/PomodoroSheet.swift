@@ -3,9 +3,9 @@ import Combine
 
 struct PomodoroSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let habit: DailyHabitDTO
+    let name: String
 
-    @StateObject private var controller: PomodoroTimerController
+    @ObservedObject var controller: PomodoroTimerController
     @State private var timerTick = Date()
     @State private var lastDragY: CGFloat = 0
 
@@ -13,11 +13,14 @@ struct PomodoroSheet: View {
     private let ringLineWidth: CGFloat = 12
     private let pointsPerMinute: CGFloat = 18   // pixels needed to change by 1 min
 
-    init(habit: DailyHabitDTO) {
-        self.habit = habit
-        _controller = StateObject(
-            wrappedValue: PomodoroTimerController(habitId: habit.id, habitName: habit.name)
-        )
+    init(habit: DailyHabitDTO, controller: PomodoroTimerController) {
+        self.name = habit.name
+        self.controller = controller
+    }
+
+    init(name: String, controller: PomodoroTimerController) {
+        self.name = name
+        self.controller = controller
     }
 
     // MARK: - Body
@@ -36,7 +39,6 @@ struct PomodoroSheet: View {
                 Spacer(minLength: 44)
             }
             .padding(.horizontal, 28)
-            .background(Color.white.ignoresSafeArea())
             .navigationTitle("Focus Timer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -44,7 +46,7 @@ struct PomodoroSheet: View {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color(hex: "#a1a1aa"))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -59,10 +61,10 @@ struct PomodoroSheet: View {
     private var idleView: some View {
         VStack(spacing: 0) {
             // Habit label
-            Text(habit.name.uppercased())
+            Text(name.uppercased())
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(1.0)
-                .foregroundStyle(Color(hex: "#d4d4d8"))
+                .foregroundStyle(.secondary)
                 .padding(.bottom, 36)
 
             // Large draggable number
@@ -71,14 +73,14 @@ struct PomodoroSheet: View {
                 VStack(spacing: 0) {
                     Image(systemName: "chevron.up")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color(hex: "#d4d4d8"))
+                        .foregroundStyle(.secondary)
                         .padding(.bottom, 12)
 
                     HStack(alignment: .lastTextBaseline, spacing: 6) {
                         Text("\(controller.focusMinutes)")
                             .font(.system(size: 88, weight: .bold, design: .rounded))
                             .tracking(-4)
-                            .foregroundStyle(Color(hex: "#09090b"))
+                            .foregroundStyle(.primary)
                             .monospacedDigit()
                             .contentTransition(.numericText())
                             .animation(.easeInOut(duration: 0.12), value: controller.focusMinutes)
@@ -86,13 +88,13 @@ struct PomodoroSheet: View {
                         Text("min")
                             .font(.system(size: 20, weight: .medium, design: .rounded))
                             .tracking(-0.5)
-                            .foregroundStyle(Color(hex: "#a1a1aa"))
+                            .foregroundStyle(.secondary)
                             .padding(.bottom, 8)
                     }
 
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color(hex: "#d4d4d8"))
+                        .foregroundStyle(.secondary)
                         .padding(.top, 12)
                 }
             }
@@ -117,7 +119,7 @@ struct PomodoroSheet: View {
             Text("SWIPE UP OR DOWN TO SET")
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.9)
-                .foregroundStyle(Color(hex: "#e4e4e7"))
+                .foregroundStyle(.tertiary)
                 .padding(.top, 28)
         }
     }
@@ -128,13 +130,13 @@ struct PomodoroSheet: View {
         VStack(spacing: 20) {
             ZStack {
                 Circle()
-                    .stroke(Color(hex: "#f4f4f5"), lineWidth: ringLineWidth)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: ringLineWidth)
                     .frame(width: ringSize, height: ringSize)
 
                 Circle()
                     .trim(from: 0, to: progressValue)
                     .stroke(
-                        progressValue < 0.15 ? Color(hex: "#dc2626") : Color(hex: "#09090b"),
+                        progressValue < 0.15 ? Color(hex: "#dc2626") : Color.primary,
                         style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
                     )
                     .frame(width: ringSize, height: ringSize)
@@ -148,20 +150,20 @@ struct PomodoroSheet: View {
                             .tracking(-1.5)
                             .monospacedDigit()
                             .foregroundStyle(
-                                progressValue < 0.15 ? Color(hex: "#dc2626") : Color(hex: "#09090b")
+                                progressValue < 0.15 ? Color(hex: "#dc2626") : Color.primary
                             )
                     }
                     Text("remaining")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
-                        .foregroundStyle(Color(hex: "#a1a1aa"))
+                        .foregroundStyle(.secondary)
                 }
             }
 
-            Text(habit.name.uppercased())
+            Text(name.uppercased())
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(1.0)
-                .foregroundStyle(Color(hex: "#a1a1aa"))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -179,16 +181,16 @@ struct PomodoroSheet: View {
                     .font(.system(size: 15, weight: .semibold))
                     .tracking(-0.15)
             }
-            .foregroundStyle(controller.isRunning ? Color(hex: "#09090b") : Color.white)
+            .foregroundStyle(controller.isRunning ? Color.primary : Color.white)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(
-                controller.isRunning ? Color(hex: "#f4f4f5") : Color(hex: "#09090b"),
+                controller.isRunning ? Color.primary.opacity(0.08) : Color(hex: "#09090b"),
                 in: Capsule()
             )
             .overlay(
                 Capsule().strokeBorder(
-                    controller.isRunning ? Color(hex: "#e4e4e7") : Color.clear,
+                    controller.isRunning ? Color.primary.opacity(0.15) : Color.clear,
                     lineWidth: 1
                 )
             )

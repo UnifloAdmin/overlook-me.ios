@@ -13,21 +13,25 @@ struct SpendingView: View {
     
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
-                TransactionsPeriodPicker(viewModel: viewModel)
-                TransactionsSummaryStrip(viewModel: viewModel)
-                
-                spendingTrendCard
-                categoryBreakdownCard
-                topMerchantsCard
-                weeklyPatternCard
+            VStack(spacing: 0) {
+                LazyVStack(spacing: 10) {
+                    TransactionsPeriodPicker(viewModel: viewModel)
+                    TransactionsSummaryStrip(viewModel: viewModel)
+
+                    spendingTrendCard
+                    categoryBreakdownCard
+                    topMerchantsCard
+                    weeklyPatternCard
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 20)
+                .padding(.bottom, 100)
+                .background(Kalshi.bg)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
         }
-        .background(Color.kSurface)
+        .scrollContentBackground(.hidden)
+        .background(Kalshi.bg)
         .navigationTitle("Spending")
-        .toolbarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadAnalytics(userId: userId)
             await viewModel.loadMerchants(userId: userId)
